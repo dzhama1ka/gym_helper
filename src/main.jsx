@@ -2071,6 +2071,7 @@ function App() {
               applyFoodToForm={applyFoodToForm}
               deleteFavoriteFood={deleteFavoriteFood}
               deleteScannedFood={deleteScannedFood}
+              isSavedUserFood={isSavedUserFood}
               foodPreview={foodPreview}
               addNutritionEntry={addNutritionEntry}
               saveCurrentFoodAsFavorite={saveCurrentFoodAsFavorite}
@@ -2276,6 +2277,7 @@ function NutritionScreen({
   applyFoodToForm,
   deleteFavoriteFood,
   deleteScannedFood,
+  isSavedUserFood,
   foodPreview,
   addNutritionEntry,
   saveCurrentFoodAsFavorite,
