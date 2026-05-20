@@ -1672,3 +1672,114 @@ select { appearance: auto; }
     grid-template-columns: 1fr;
   }
 }
+
+/* v7: collapsible forms, roomier timer spacing, compact date rows and removable scanned foods */
+.collapsible-form {
+  padding-top: 2px;
+}
+.form-topline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 2px;
+}
+.form-topline .tiny-link {
+  flex: 0 0 auto;
+}
+.exercise-dropdown {
+  max-height: 360px;
+}
+.timer-collapsible-content {
+  padding-top: 2px;
+}
+.timer-presets {
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.timer-presets button {
+  min-height: 38px;
+  border-radius: 14px;
+  font-size: 13px;
+  padding-inline: 6px;
+}
+.timer-controls.grid-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 6px;
+}
+.timer-controls .secondary-button {
+  min-height: 40px;
+  border-radius: 14px;
+  padding-inline: 5px;
+  gap: 5px;
+  font-size: 11.5px;
+}
+.timer-controls .secondary-button svg {
+  width: 14px;
+  height: 14px;
+}
+.selected-food-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  border-radius: 18px;
+  padding: 11px 12px;
+  background: rgba(15, 23, 42, 0.65);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.selected-food-row div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+.selected-food-row strong,
+.selected-food-row small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.selected-food-row small {
+  color: #94a3b8;
+  font-size: 12px;
+}
+.selected-food-row button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 34px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: rgba(244, 63, 94, 0.1);
+  color: #fda4af;
+  font-size: 12px;
+  font-weight: 900;
+}
+.weight-list .mini-row {
+  grid-template-columns: 82px minmax(70px, 1fr) 30px;
+}
+.weight-list .mini-row span,
+.weight-list .mini-row strong {
+  white-space: nowrap;
+}
+.weight-list .mini-row strong {
+  text-align: right;
+}
+@media (max-width: 390px) {
+  .form-topline,
+  .selected-food-row {
+    grid-template-columns: 1fr;
+  }
+  .form-topline {
+    display: grid;
+  }
+  .timer-controls.grid-3 {
+    gap: 10px;
+  }
+  .timer-controls .secondary-button {
+    min-height: 38px;
+    font-size: 11px;
+  }
+}

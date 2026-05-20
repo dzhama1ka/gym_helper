@@ -1154,8 +1154,8 @@ function App() {
   const suggestions = useMemo(() => {
     const value = normalize(workoutForm.name);
     const source = workoutForm.type === "cardio" ? cardioNames : exerciseNames;
-    if (!value) return source.slice(0, 7);
-    return source.filter((name) => normalize(name).includes(value)).slice(0, 7);
+    if (!value) return source;
+    return source.filter((name) => normalize(name).includes(value));
   }, [exerciseNames, workoutForm.name, workoutForm.type]);
 
   const dateEntries = useMemo(() => entries.filter((entry) => entry.date === selectedDate).sort((a, b) => b.createdAt - a.createdAt), [entries, selectedDate]);
@@ -1482,6 +1482,24 @@ function App() {
     setFavoriteFoods((current) => current.filter((item) => item.id !== id));
   }
 
+  function deleteScannedFood(id) {
+    setScannedFoods((current) => current.filter((item) => item.id !== id));
+    setFoodForm((current) => {
+      if (current.foodId !== id) return current;
+      const fallback = foodDatabase[0];
+      return {
+        ...current,
+        foodId: fallback.id,
+        name: "",
+        calories: String(fallback.calories),
+        protein: String(fallback.protein),
+        fat: String(fallback.fat),
+        carbs: String(fallback.carbs),
+        grams: String(fallback.defaultGrams || current.grams || 100),
+      };
+    });
+  }
+
   function addNutritionEntry(event) {
     event?.preventDefault?.();
     const food = foodSource;
@@ -1753,7 +1771,17 @@ function App() {
           {tab === "training" && (
             <section className="screen stack">
               <DateCard selectedDate={selectedDate} setSelectedDate={setSelectedDate} />
-              <RestTimerCard restTimer={restTimer} setRestTimer={setRestTimer} startRestTimer={startRestTimer} pauseRestTimer={pauseRestTimer} resetRestTimer={resetRestTimer} />
+
+              <details className="card stack template-details">
+                <summary>
+                  <span>
+                    <strong>Таймер отдыха</strong>
+                    <small>Круговой циферблат и быстрые паузы</small>
+                  </span>
+                  <Timer className="muted-icon" />
+                </summary>
+                <RestTimerCard restTimer={restTimer} setRestTimer={setRestTimer} startRestTimer={startRestTimer} pauseRestTimer={pauseRestTimer} resetRestTimer={resetRestTimer} />
+              </details>
 
               <details className="card stack template-details">
                 <summary>
@@ -1773,95 +1801,102 @@ function App() {
                 </div>
               </details>
 
-              <form onSubmit={addWorkoutEntry} className="card stack">
-                <div className="section-head">
-                  <div>
-                    <h2>Добавить упражнение</h2>
-                    <p>Силовые и кардио сохраняются в одном дневнике</p>
+              <details className="card stack template-details">
+                <summary>
+                  <span>
+                    <strong>Добавить упражнение</strong>
+                    <small>Силовые и кардио сохраняются в одном дневнике</small>
+                  </span>
+                  <Dumbbell className="muted-icon" />
+                </summary>
+                <form onSubmit={addWorkoutEntry} className="stack collapsible-form">
+                  <div className="form-topline">
+                    <span className="hint">Выбери тип упражнения и заполни параметры.</span>
+                    <button type="button" className="tiny-link" onClick={() => setWorkoutForm(emptyWorkoutForm())}>Очистить</button>
                   </div>
-                  <button type="button" className="icon-button" onClick={() => setWorkoutForm(emptyWorkoutForm())} aria-label="Очистить форму"><X size={18} /></button>
-                </div>
 
-                <div className="segmented">
-                  <button type="button" className={workoutForm.type === "strength" ? "active" : ""} onClick={() => selectWorkoutType("strength")}>Силовое</button>
-                  <button type="button" className={workoutForm.type === "cardio" ? "active" : ""} onClick={() => selectWorkoutType("cardio")}>Кардио</button>
-                </div>
-
-                <div className="field with-dropdown">
-                  <label>Упражнение</label>
-                  <input
-                    value={workoutForm.name}
-                    onChange={(event) => {
-                      setWorkoutField("name", event.target.value);
-                      setShowSuggestions(true);
-                    }}
-                    onFocus={() => setShowSuggestions(true)}
-                    placeholder={workoutForm.type === "cardio" ? "Например: беговая дорожка" : "Например: жим лёжа"}
-                  />
-                  {showSuggestions && suggestions.length > 0 && (
-                    <div className="dropdown">
-                      {suggestions.map((name) => <button key={name} type="button" onClick={() => selectSuggestion(name)}>{name}</button>)}
-                    </div>
-                  )}
-                </div>
-
-                {workoutForm.type === "cardio" ? (
-                  <div className="stack">
-                    <div className="info-card compact-info">
-                      <span>{activeCardioProfile?.icon || "🔥"}</span>
-                      <div>
-                        <strong>{resolvedCardioName || "Кардио"}</strong>
-                        <p>Ккал считаются по весу из профиля: {profile.weightKg || 70} кг</p>
-                      </div>
-                    </div>
-
-                    <div className="field">
-                      <label>Сложность / настройка</label>
-                      <select value={workoutForm.intensityId || selectedIntensity?.id || ""} onChange={(event) => setWorkoutField("intensityId", event.target.value)}>
-                        {activeCardioProfile?.intensities.map((item) => <option key={item.id} value={item.id}>{item.label} · MET {item.met}</option>)}
-                      </select>
-                    </div>
-
-                    <div className="grid-2">
-                      <NumberField label="Время, мин" value={workoutForm.duration} onChange={(value) => setWorkoutField("duration", value)} />
-                      <NumberField label="Дистанция, км" value={workoutForm.distance || activeCardioProfile?.defaultDistance || ""} onChange={(value) => setWorkoutField("distance", value)} />
-                    </div>
-                    <div className="grid-2">
-                      <NumberField label="Ккал вручную" value={workoutForm.calories} onChange={(value) => setWorkoutField("calories", value)} placeholder={String(estimatedWorkoutCalories)} />
-                      <ReadOnlyMetric label="Оценка" value={`${estimatedWorkoutCalories} ккал`} />
-                    </div>
+                  <div className="segmented">
+                    <button type="button" className={workoutForm.type === "strength" ? "active" : ""} onClick={() => selectWorkoutType("strength")}>Силовое</button>
+                    <button type="button" className={workoutForm.type === "cardio" ? "active" : ""} onClick={() => selectWorkoutType("cardio")}>Кардио</button>
                   </div>
-                ) : (
-                  <div className="stack">
-                    {selectedExerciseInfo && (
-                      <div className="exercise-help-strip">
-                        <img className="exercise-thumb" src={getExerciseImageSrc(selectedExerciseInfo.name)} alt="" loading="lazy" />
-                        <div>
-                          <strong>{selectedExerciseInfo.category}</strong>
-                          <p>{formatMuscles(selectedExerciseInfo.primary, selectedExerciseInfo.secondary)}</p>
-                        </div>
-                        <button type="button" onClick={() => setExerciseInfoName(selectedExerciseInfo.name)}><Info size={16} /> Как делать</button>
+
+                  <div className="field with-dropdown">
+                    <label>Упражнение</label>
+                    <input
+                      value={workoutForm.name}
+                      onChange={(event) => {
+                        setWorkoutField("name", event.target.value);
+                        setShowSuggestions(true);
+                      }}
+                      onFocus={() => setShowSuggestions(true)}
+                      placeholder={workoutForm.type === "cardio" ? "Например: беговая дорожка" : "Например: жим лёжа"}
+                    />
+                    {showSuggestions && suggestions.length > 0 && (
+                      <div className="dropdown exercise-dropdown">
+                        {suggestions.map((name) => <button key={name} type="button" onClick={() => selectSuggestion(name)}>{name}</button>)}
                       </div>
                     )}
-                    <div className="grid-3">
-                      <NumberField label="Подходы" value={workoutForm.sets} onChange={(value) => setWorkoutField("sets", value)} />
-                      <NumberField label="Повторы" value={workoutForm.reps} onChange={(value) => setWorkoutField("reps", value)} />
-                      <NumberField label="Вес, кг" value={workoutForm.weight} onChange={(value) => setWorkoutField("weight", value)} placeholder="0" />
-                    </div>
                   </div>
-                )}
 
-                <div className="field">
-                  <label>Заметка</label>
-                  <textarea value={workoutForm.note} onChange={(event) => setWorkoutField("note", event.target.value)} placeholder="Например: увеличить вес на следующей тренировке" rows={3} />
-                </div>
+                  {workoutForm.type === "cardio" ? (
+                    <div className="stack">
+                      <div className="info-card compact-info">
+                        <span>{activeCardioProfile?.icon || "🔥"}</span>
+                        <div>
+                          <strong>{resolvedCardioName || "Кардио"}</strong>
+                          <p>Ккал считаются по весу из профиля: {profile.weightKg || 70} кг</p>
+                        </div>
+                      </div>
 
-                <button className="primary-button" type="submit"><Plus size={19} /> Добавить</button>
-              </form>
+                      <div className="field">
+                        <label>Сложность / настройка</label>
+                        <select value={workoutForm.intensityId || selectedIntensity?.id || ""} onChange={(event) => setWorkoutField("intensityId", event.target.value)}>
+                          {activeCardioProfile?.intensities.map((item) => <option key={item.id} value={item.id}>{item.label} · MET {item.met}</option>)}
+                        </select>
+                      </div>
+
+                      <div className="grid-2">
+                        <NumberField label="Время, мин" value={workoutForm.duration} onChange={(value) => setWorkoutField("duration", value)} />
+                        <NumberField label="Дистанция, км" value={workoutForm.distance || activeCardioProfile?.defaultDistance || ""} onChange={(value) => setWorkoutField("distance", value)} />
+                      </div>
+                      <div className="grid-2">
+                        <NumberField label="Ккал вручную" value={workoutForm.calories} onChange={(value) => setWorkoutField("calories", value)} placeholder={String(estimatedWorkoutCalories)} />
+                        <ReadOnlyMetric label="Оценка" value={`${estimatedWorkoutCalories} ккал`} />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="stack">
+                      {selectedExerciseInfo && (
+                        <div className="exercise-help-strip">
+                          <img className="exercise-thumb" src={getExerciseImageSrc(selectedExerciseInfo.name)} alt="" loading="lazy" />
+                          <div>
+                            <strong>{selectedExerciseInfo.category}</strong>
+                            <p>{formatMuscles(selectedExerciseInfo.primary, selectedExerciseInfo.secondary)}</p>
+                          </div>
+                          <button type="button" onClick={() => setExerciseInfoName(selectedExerciseInfo.name)}><Info size={16} /> Как делать</button>
+                        </div>
+                      )}
+                      <div className="grid-3">
+                        <NumberField label="Подходы" value={workoutForm.sets} onChange={(value) => setWorkoutField("sets", value)} />
+                        <NumberField label="Повторы" value={workoutForm.reps} onChange={(value) => setWorkoutField("reps", value)} />
+                        <NumberField label="Вес, кг" value={workoutForm.weight} onChange={(value) => setWorkoutField("weight", value)} placeholder="0" />
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="field">
+                    <label>Заметка</label>
+                    <textarea value={workoutForm.note} onChange={(event) => setWorkoutField("note", event.target.value)} placeholder="Например: увеличить вес на следующей тренировке" rows={3} />
+                  </div>
+
+                  <button className="primary-button" type="submit"><Plus size={19} /> Добавить</button>
+                </form>
+              </details>
 
               <WorkoutList selectedDate={selectedDate} dateEntries={dateEntries} deleteWorkoutEntry={deleteWorkoutEntry} startRestTimer={startRestTimer} openExerciseInfo={setExerciseInfoName} />
             </section>
           )}
+
 
           {tab === "nutrition" && (
             <NutritionScreen
@@ -1878,6 +1913,7 @@ function App() {
               favoriteFoods={favoriteFoods}
               applyFoodToForm={applyFoodToForm}
               deleteFavoriteFood={deleteFavoriteFood}
+              deleteScannedFood={deleteScannedFood}
               foodPreview={foodPreview}
               addNutritionEntry={addNutritionEntry}
               saveCurrentFoodAsFavorite={saveCurrentFoodAsFavorite}
@@ -2017,14 +2053,7 @@ function RestTimerCard({ restTimer, setRestTimer, startRestTimer, pauseRestTimer
   const dashOffset = circumference * (1 - progress);
 
   return (
-    <div className="card rest-card">
-      <div className="section-head">
-        <div>
-          <h2>Таймер отдыха</h2>
-          <p>Круговой циферблат показывает, сколько паузы осталось</p>
-        </div>
-        <Timer className="muted-icon" />
-      </div>
+    <div className="rest-card timer-collapsible-content">
       <div className="timer-dial" aria-label="Таймер отдыха">
         <svg viewBox="0 0 160 160">
           <circle className="timer-track" cx="80" cy="80" r={radius} />
@@ -2060,7 +2089,7 @@ function WorkoutList({ selectedDate, dateEntries, deleteWorkoutEntry, startRestT
   return (
     <section className="stack">
       <div className="section-head inline">
-        <h2>{formatDate(selectedDate)}</h2>
+        <h2>{formatShortDate(selectedDate)}</h2>
         <span className="pill">{dateEntries.length} записей</span>
       </div>
       {dateEntries.length === 0 ? (
@@ -2088,6 +2117,7 @@ function NutritionScreen({
   favoriteFoods,
   applyFoodToForm,
   deleteFavoriteFood,
+  deleteScannedFood,
   foodPreview,
   addNutritionEntry,
   saveCurrentFoodAsFavorite,
@@ -2163,72 +2193,83 @@ function NutritionScreen({
         )}
       </div>
 
-      <form onSubmit={addNutritionEntry} className="card stack">
-        <div className="section-head">
-          <div>
-            <h2>Добавить продукт</h2>
-            <p>Выбери из базы, избранного или введи данные с этикетки</p>
-          </div>
+      <details className="card stack template-details">
+        <summary>
+          <span>
+            <strong>Добавить продукт</strong>
+            <small>Выбери из базы, избранного или введи данные с этикетки</small>
+          </span>
           <Apple className="muted-icon" />
-        </div>
+        </summary>
+        <form onSubmit={addNutritionEntry} className="stack collapsible-form">
+          {favoriteFoods.length > 0 && (
+            <div className="favorite-foods">
+              {favoriteFoods.map((food) => (
+                <div key={food.id} className="favorite-chip">
+                  <button type="button" onClick={() => applyFoodToForm(food)}>{food.name}</button>
+                  <button type="button" onClick={() => deleteFavoriteFood(food.id)} aria-label="Удалить из избранного"><X size={13} /></button>
+                </div>
+              ))}
+            </div>
+          )}
 
-        {favoriteFoods.length > 0 && (
-          <div className="favorite-foods">
-            {favoriteFoods.map((food) => (
-              <div key={food.id} className="favorite-chip">
-                <button type="button" onClick={() => applyFoodToForm(food)}>{food.name}</button>
-                <button type="button" onClick={() => deleteFavoriteFood(food.id)} aria-label="Удалить из избранного"><X size={13} /></button>
-              </div>
-            ))}
+          <div className="grid-2">
+            <div className="field">
+              <label>Приём пищи</label>
+              <select value={foodForm.meal} onChange={(event) => setFoodForm((current) => ({ ...current, meal: event.target.value }))}>
+                {meals.map((meal) => <option key={meal.id} value={meal.id}>{meal.label}</option>)}
+              </select>
+            </div>
+            <NumberField label="Граммы" value={foodForm.grams} onChange={(value) => setFoodForm((current) => ({ ...current, grams: value }))} />
           </div>
-        )}
 
-        <div className="grid-2">
           <div className="field">
-            <label>Приём пищи</label>
-            <select value={foodForm.meal} onChange={(event) => setFoodForm((current) => ({ ...current, meal: event.target.value }))}>
-              {meals.map((meal) => <option key={meal.id} value={meal.id}>{meal.label}</option>)}
+            <label>Общий список продуктов</label>
+            <select value={foodForm.foodId} onChange={(event) => selectFood(event.target.value)}>
+              {commonFoodDatabase.map((food) => <option key={food.id} value={food.id}>{food.code ? "📦 " : ""}{food.name}</option>)}
             </select>
           </div>
-          <NumberField label="Граммы" value={foodForm.grams} onChange={(value) => setFoodForm((current) => ({ ...current, grams: value }))} />
-        </div>
 
-        <div className="field">
-          <label>Общий список продуктов</label>
-          <select value={foodForm.foodId} onChange={(event) => selectFood(event.target.value)}>
-            {commonFoodDatabase.map((food) => <option key={food.id} value={food.id}>{food.code ? "📦 " : ""}{food.name}</option>)}
-          </select>
-        </div>
-
-        <details className="details-box">
-          <summary>Ввести свой продукт / данные с этикетки</summary>
-          <div className="stack details-content">
-            <div className="field">
-              <label>Название продукта</label>
-              <input value={foodForm.name} onChange={(event) => setFoodForm((current) => ({ ...current, name: event.target.value }))} placeholder="Например: йогурт клубничный" />
+          {selectedFood?.code && (
+            <div className="selected-food-row">
+              <div>
+                <strong>{selectedFood.name}</strong>
+                <small>{selectedFood.calories} ккал · Б {selectedFood.protein} · Ж {selectedFood.fat} · У {selectedFood.carbs} на 100 г</small>
+              </div>
+              <button type="button" onClick={() => deleteScannedFood(selectedFood.id)}><Trash2 size={15} /> Удалить</button>
             </div>
-            <div className="grid-4 compact-grid">
-              <NumberField label="Ккал/100г" value={foodForm.calories} onChange={(value) => setFoodForm((current) => ({ ...current, calories: value }))} />
-              <NumberField label="Б/100г" value={foodForm.protein} onChange={(value) => setFoodForm((current) => ({ ...current, protein: value }))} />
-              <NumberField label="Ж/100г" value={foodForm.fat} onChange={(value) => setFoodForm((current) => ({ ...current, fat: value }))} />
-              <NumberField label="У/100г" value={foodForm.carbs} onChange={(value) => setFoodForm((current) => ({ ...current, carbs: value }))} />
+          )}
+
+          <details className="details-box">
+            <summary>Ввести свой продукт / данные с этикетки</summary>
+            <div className="stack details-content">
+              <div className="field">
+                <label>Название продукта</label>
+                <input value={foodForm.name} onChange={(event) => setFoodForm((current) => ({ ...current, name: event.target.value }))} placeholder="Например: йогурт клубничный" />
+              </div>
+              <div className="grid-4 compact-grid">
+                <NumberField label="Ккал/100г" value={foodForm.calories} onChange={(value) => setFoodForm((current) => ({ ...current, calories: value }))} />
+                <NumberField label="Б/100г" value={foodForm.protein} onChange={(value) => setFoodForm((current) => ({ ...current, protein: value }))} />
+                <NumberField label="Ж/100г" value={foodForm.fat} onChange={(value) => setFoodForm((current) => ({ ...current, fat: value }))} />
+                <NumberField label="У/100г" value={foodForm.carbs} onChange={(value) => setFoodForm((current) => ({ ...current, carbs: value }))} />
+              </div>
+            </div>
+          </details>
+
+          <div className="info-card compact-info">
+            <span>≈</span>
+            <div>
+              <strong>{foodPreview.calories} ккал</strong>
+              <p>Б {foodPreview.protein} г · Ж {foodPreview.fat} г · У {foodPreview.carbs} г</p>
             </div>
           </div>
-        </details>
 
-        <div className="info-card compact-info">
-          <span>≈</span>
-          <div>
-            <strong>{foodPreview.calories} ккал</strong>
-            <p>Б {foodPreview.protein} г · Ж {foodPreview.fat} г · У {foodPreview.carbs} г</p>
+          <div className="grid-2">
+            <button className="primary-button" type="submit"><Plus size={19} /> Добавить</button>
+            <button className="secondary-button" type="button" onClick={saveCurrentFoodAsFavorite}><Star size={18} /> В избранное</button>
           </div>
-        </div>
-
-        <div className="grid-2">
-          <button className="primary-button" type="submit"><Plus size={19} /> Добавить</button>
-          <button className="secondary-button" type="button" onClick={saveCurrentFoodAsFavorite}><Star size={18} /> В избранное</button>
-        </div>
-      </form>
+        </form>
+      </details>
 
       <div className="card stack">
         <div className="section-head">
@@ -2542,7 +2583,7 @@ function ProfileScreen({ profile, updateProfile, nutritionPlan, bmi, trend, weig
         <div className="weight-list">
           {weightLog.slice(0, 8).map((item) => (
             <div key={item.id} className="mini-row">
-              <span>{formatDate(item.date)}</span>
+              <span>{formatShortDate(item.date)}</span>
               <strong>{item.weightKg} кг</strong>
               <button type="button" onClick={() => deleteWeightRecord(item.id)}><Trash2 size={15} /></button>
             </div>
