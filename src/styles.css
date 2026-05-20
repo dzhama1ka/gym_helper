@@ -1783,3 +1783,224 @@ select { appearance: auto; }
     font-size: 11px;
   }
 }
+
+/* v9: desktop/tablet adaptation, custom nutrition goals and menu builder */
+.custom-goals-editor,
+.menu-builder-box {
+  border-radius: 22px;
+  padding: 14px;
+  background: rgba(15, 23, 42, 0.68);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.custom-goals-editor .section-head p {
+  margin-top: 4px;
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.menu-presets-card .menu-action-grid {
+  align-items: stretch;
+}
+
+.builder-controls {
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.6fr) minmax(0, 0.8fr);
+}
+
+.builder-preview-row,
+.builder-item-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  border-radius: 18px;
+  padding: 12px;
+  background: rgba(2, 6, 23, 0.46);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.builder-preview-row span,
+.builder-item-row span {
+  display: block;
+  margin-top: 3px;
+  color: #94a3b8;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.builder-items-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.builder-item-row button {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  color: #fda4af;
+  background: rgba(244, 63, 94, 0.08);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.chart-date-label {
+  fill: #cbd5e1;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+@media (min-width: 860px) {
+  .app-shell {
+    align-items: stretch;
+    justify-content: center;
+    padding: 28px;
+  }
+
+  .phone {
+    width: min(1180px, calc(100vw - 56px));
+    min-height: calc(100vh - 56px);
+    display: grid;
+    grid-template-columns: 286px minmax(0, 1fr);
+    grid-template-rows: auto 1fr;
+    overflow: hidden;
+    border-radius: 34px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  .header {
+    position: relative;
+    grid-column: 1;
+    grid-row: 1;
+    border-right: 1px solid rgba(255, 255, 255, 0.08);
+    border-bottom: 0;
+    padding: 30px 24px 18px;
+  }
+
+  .header-top {
+    align-items: flex-start;
+  }
+
+  .header h1 {
+    max-width: 190px;
+    font-size: 28px;
+    line-height: 1.05;
+  }
+
+  .main.with-bottom-nav,
+  .main {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    min-height: calc(100vh - 56px);
+    max-height: calc(100vh - 56px);
+    overflow-y: auto;
+    padding: 32px 38px 44px;
+  }
+
+  .screen {
+    max-width: 920px;
+    margin: 0 auto;
+  }
+
+  .bottom-nav {
+    position: relative;
+    left: auto;
+    bottom: auto;
+    transform: none;
+    grid-column: 1;
+    grid-row: 2;
+    align-self: start;
+    width: auto;
+    margin: 12px 20px 24px;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 9px;
+    padding: 10px;
+    border-radius: 24px;
+    background: rgba(2, 6, 23, 0.54);
+    box-shadow: none;
+  }
+
+  .bottom-tab {
+    min-height: 54px;
+    flex-direction: row;
+    justify-content: flex-start;
+    padding: 0 15px;
+    gap: 11px;
+    font-size: 13px;
+    border-radius: 18px;
+  }
+
+  .dashboard-grid,
+  .template-grid,
+  .quick-actions {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .dashboard-panels,
+  .profile-overview-grid,
+  .macro-row,
+  .compact-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .profile-number-grid,
+  .weight-form-grid,
+  .menu-action-grid,
+  .timer-controls.grid-3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .nutrition-summary .grid-4,
+  .custom-goals-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .card,
+  .exercise-card,
+  .food-card,
+  .stat-card {
+    box-shadow: 0 18px 44px rgba(0, 0, 0, 0.18);
+  }
+
+  .scanner-add-grid,
+  .grid-2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .grid-3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .grid-4 {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .exercise-modal {
+    width: min(860px, calc(100vw - 80px));
+    max-height: min(88vh, 900px);
+  }
+}
+
+@media (max-width: 520px) {
+  .builder-controls,
+  .custom-goals-grid,
+  .menu-action-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .builder-preview-row,
+  .builder-item-row {
+    grid-template-columns: 1fr;
+  }
+
+  .builder-preview-row .tiny-link,
+  .builder-item-row button {
+    justify-self: start;
+  }
+}

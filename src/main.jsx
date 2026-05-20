@@ -49,7 +49,7 @@ const FAVORITE_FOODS_KEY = "mobile-workout-tracker-favorite-foods-v1";
 const SAVED_MENUS_KEY = "mobile-workout-tracker-saved-menus-v1";
 const SCANNED_FOODS_KEY = "mobile-workout-tracker-scanned-foods-v1";
 const CLOUD_TABLE = "app_state";
-const APP_STATE_VERSION = 8;
+const APP_STATE_VERSION = 9;
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "";
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
 const supabase = SUPABASE_URL && SUPABASE_ANON_KEY ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
@@ -650,6 +650,10 @@ const defaultProfile = {
   targetWeightKg: "",
   activityLevel: "",
   weeklyChangeKg: "",
+  customCalories: "",
+  customProtein: "",
+  customFat: "",
+  customCarbs: "",
 };
 
 function normalize(value) {
@@ -909,7 +913,17 @@ function calculateNutritionPlan(profile) {
   const bmr = calculateBmr(profile);
   const activity = numeric(profile.activityLevel);
   if (!weight || !bmr || !activity) {
-    return { bmr: 0, tdee: 0, targetCalories: 0, dailyAdjustment: 0, protein: 0, fat: 0, carbs: 0, direction: 0 };
+    return {
+      bmr: 0,
+      tdee: 0,
+      targetCalories: numeric(profile.customCalories),
+      dailyAdjustment: 0,
+      protein: numeric(profile.customProtein),
+      fat: numeric(profile.customFat),
+      carbs: numeric(profile.customCarbs),
+      direction: 0,
+      isCustom: Boolean(numeric(profile.customCalories) || numeric(profile.customProtein) || numeric(profile.customFat) || numeric(profile.customCarbs)),
+    };
   }
 
   const tdee = Math.round(bmr * activity);
@@ -926,7 +940,27 @@ function calculateNutritionPlan(profile) {
   const fatCalories = fat * 9;
   const carbs = Math.max(0, Math.round((targetCalories - proteinCalories - fatCalories) / 4));
 
-  return { bmr, tdee, targetCalories, dailyAdjustment, protein, fat, carbs, direction };
+  const customCalories = numeric(profile.customCalories);
+  const customProtein = numeric(profile.customProtein);
+  const customFat = numeric(profile.customFat);
+  const customCarbs = numeric(profile.customCarbs);
+  const isCustom = Boolean(customCalories || customProtein || customFat || customCarbs);
+
+  return {
+    bmr,
+    tdee,
+    targetCalories: customCalories || targetCalories,
+    dailyAdjustment,
+    protein: customProtein || protein,
+    fat: customFat || fat,
+    carbs: customCarbs || carbs,
+    direction,
+    isCustom,
+    autoTargetCalories: targetCalories,
+    autoProtein: protein,
+    autoFat: fat,
+    autoCarbs: carbs,
+  };
 }
 
 function daysBetween(a, b) {
@@ -1640,17 +1674,33 @@ function App() {
     setNutritionEntries((current) => [...copied, ...current.filter((item) => item.date !== selectedDate)]);
   }
 
-  function saveDayAsMenu() {
-    if (!dayNutrition.daily.length) return;
-    const title = `Меню ${formatDate(selectedDate)}`;
+  function createSavedMenu(title, items) {
+    if (!Array.isArray(items) || !items.length) return;
+    const normalizedItems = items.map((item) => ({
+      meal: item.meal,
+      name: item.name,
+      grams: numeric(item.grams),
+      per100: item.per100,
+    })).filter((item) => item.name && item.grams > 0 && item.per100);
+    if (!normalizedItems.length) return;
+    const calories = normalizedItems.reduce((sum, item) => sum + calculateFoodAmount(item.per100, item.grams).calories, 0);
     const saved = {
       id: uid(),
-      title,
-      items: dayNutrition.daily.map((item) => ({ meal: item.meal, name: item.name, grams: item.grams, per100: item.per100 })),
-      calories: Math.round(dayNutrition.totals.calories),
+      title: title?.trim() || `Меню ${formatShortDate(selectedDate)}`,
+      items: normalizedItems,
+      calories: Math.round(calories),
       createdAt: Date.now(),
     };
-    setSavedMenus((current) => [saved, ...current].slice(0, 8));
+    setSavedMenus((current) => [saved, ...current.filter((menu) => normalize(menu.title) !== normalize(saved.title))].slice(0, 20));
+  }
+
+  function saveDayAsMenu(titleOverride) {
+    if (!dayNutrition.daily.length) return;
+    createSavedMenu(titleOverride || `Меню ${formatShortDate(selectedDate)}`, dayNutrition.daily);
+  }
+
+  function createCustomMenu(title, items) {
+    createSavedMenu(title, items);
   }
 
   function applySavedMenu(menu) {
@@ -2003,6 +2053,7 @@ function App() {
               addSampleMenu={addSampleMenu}
               copyYesterdayNutrition={copyYesterdayNutrition}
               saveDayAsMenu={saveDayAsMenu}
+              createCustomMenu={createCustomMenu}
               savedMenus={savedMenus}
               applySavedMenu={applySavedMenu}
               deleteSavedMenu={deleteSavedMenu}
@@ -2207,12 +2258,46 @@ function NutritionScreen({
   addSampleMenu,
   copyYesterdayNutrition,
   saveDayAsMenu,
+  createCustomMenu,
   savedMenus,
   applySavedMenu,
   deleteSavedMenu,
   deleteNutritionEntry,
 }) {
   const [manualBarcode, setManualBarcode] = useState("");
+  const [quickMenuTitle, setQuickMenuTitle] = useState("");
+  const [builderTitle, setBuilderTitle] = useState("");
+  const [builderForm, setBuilderForm] = useState({ meal: "breakfast", foodId: "oatmeal", grams: "100" });
+  const [builderItems, setBuilderItems] = useState([]);
+
+  const builderFood = commonFoodDatabase.find((food) => food.id === builderForm.foodId) || commonFoodDatabase[0] || foodDatabase[0];
+  const builderPreview = calculateFoodAmount(builderFood, builderForm.grams);
+
+  function addBuilderItem() {
+    const grams = numeric(builderForm.grams);
+    if (!builderFood?.name || grams <= 0) return;
+    setBuilderItems((current) => [
+      ...current,
+      {
+        id: uid(),
+        meal: builderForm.meal,
+        name: builderFood.name,
+        grams,
+        per100: { calories: numeric(builderFood.calories), protein: numeric(builderFood.protein), fat: numeric(builderFood.fat), carbs: numeric(builderFood.carbs) },
+      },
+    ]);
+  }
+
+  function removeBuilderItem(id) {
+    setBuilderItems((current) => current.filter((item) => item.id !== id));
+  }
+
+  function saveBuilderMenu() {
+    if (!builderItems.length) return;
+    createCustomMenu(builderTitle || "Мой рацион", builderItems);
+    setBuilderTitle("");
+    setBuilderItems([]);
+  }
 
   async function submitManualBarcode() {
     const code = manualBarcode.trim();
@@ -2246,29 +2331,77 @@ function NutritionScreen({
         </div>
       </div>
 
-      <div className="card stack">
+      <div className="card stack menu-presets-card">
         <div className="section-head">
           <div>
-            <h2>Ускорители питания</h2>
-            <p>Копируй рацион, сохраняй меню и повторяй любимые продукты</p>
+            <h2>Пресеты меню</h2>
+            <p>Создавай рационы, повторяй готовые дни и собирай меню из продуктов</p>
           </div>
           <Star className="muted-icon" />
         </div>
-        <div className="grid-3">
+        <div className="grid-3 menu-action-grid">
           <button type="button" className="secondary-button" onClick={copyYesterdayNutrition}><Copy size={18} /> Вчера</button>
-          <button type="button" className="secondary-button" onClick={saveDayAsMenu}><Save size={18} /> Сохранить</button>
-          <button type="button" className="secondary-button" onClick={addSampleMenu}><Utensils size={18} /> Меню</button>
+          <button type="button" className="secondary-button" onClick={() => saveDayAsMenu(quickMenuTitle)}><Save size={18} /> Сохранить день</button>
+          <button type="button" className="secondary-button" onClick={addSampleMenu}><Utensils size={18} /> Пример меню</button>
         </div>
-        {savedMenus.length > 0 && (
+        <div className="field">
+          <label>Название для сохранения текущего дня</label>
+          <input value={quickMenuTitle} onChange={(event) => setQuickMenuTitle(event.target.value)} placeholder={`Например: рацион ${formatShortDate(selectedDate)}`} />
+        </div>
+        {savedMenus.length > 0 ? (
           <div className="saved-menu-list">
             {savedMenus.map((menu) => (
               <div key={menu.id} className="saved-menu-row">
-                <button type="button" onClick={() => applySavedMenu(menu)}><strong>{menu.title}</strong><span>{menu.calories} ккал</span></button>
+                <button type="button" onClick={() => applySavedMenu(menu)}><strong>{menu.title}</strong><span>{menu.items?.length || 0} поз. · {menu.calories} ккал</span></button>
                 <button type="button" onClick={() => deleteSavedMenu(menu.id)} aria-label="Удалить меню"><Trash2 size={15} /></button>
               </div>
             ))}
           </div>
-        )}
+        ) : <p className="hint">Пока нет сохраненных пресетов. Собери день питания или создай рацион в конструкторе.</p>}
+
+        <details className="details-box menu-builder-box">
+          <summary>Конструктор рациона</summary>
+          <div className="stack details-content">
+            <div className="field">
+              <label>Название меню</label>
+              <input value={builderTitle} onChange={(event) => setBuilderTitle(event.target.value)} placeholder="Например: набор массы 2800 ккал" />
+            </div>
+            <div className="grid-3 builder-controls">
+              <div className="field">
+                <label>Приём пищи</label>
+                <select value={builderForm.meal} onChange={(event) => setBuilderForm((current) => ({ ...current, meal: event.target.value }))}>
+                  {meals.map((meal) => <option key={meal.id} value={meal.id}>{meal.label}</option>)}
+                </select>
+              </div>
+              <div className="field">
+                <label>Продукт</label>
+                <select value={builderForm.foodId} onChange={(event) => setBuilderForm((current) => ({ ...current, foodId: event.target.value }))}>
+                  {commonFoodDatabase.map((food) => <option key={food.id} value={food.id}>{food.code ? "📦 " : ""}{food.name}</option>)}
+                </select>
+              </div>
+              <NumberField label="Граммы" value={builderForm.grams} onChange={(value) => setBuilderForm((current) => ({ ...current, grams: value }))} />
+            </div>
+            <div className="builder-preview-row">
+              <span>{builderPreview.calories} ккал · Б {builderPreview.protein} · Ж {builderPreview.fat} · У {builderPreview.carbs}</span>
+              <button type="button" className="tiny-link" onClick={addBuilderItem}>Добавить в меню</button>
+            </div>
+            {builderItems.length > 0 && (
+              <div className="builder-items-list">
+                {builderItems.map((item) => {
+                  const total = calculateFoodAmount(item.per100, item.grams);
+                  const mealLabel = meals.find((meal) => meal.id === item.meal)?.label || "Еда";
+                  return (
+                    <div key={item.id} className="builder-item-row">
+                      <div><strong>{item.name}</strong><span>{mealLabel} · {item.grams} г · {total.calories} ккал</span></div>
+                      <button type="button" onClick={() => removeBuilderItem(item.id)} aria-label="Удалить из меню"><Trash2 size={15} /></button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            <button type="button" className="primary-button" onClick={saveBuilderMenu} disabled={!builderItems.length}><Save size={18} /> Сохранить пресет</button>
+          </div>
+        </details>
       </div>
 
       <details className="card stack template-details">
@@ -2607,6 +2740,23 @@ function ProfileScreen({ profile, updateProfile, nutritionPlan, bmi, trend, weig
             </div>
 
             <NumberField label="План изменения веса, кг/нед." value={profile.weeklyChangeKg} onChange={(value) => updateProfile("weeklyChangeKg", value)} />
+
+            <div className="custom-goals-editor">
+              <div className="section-head inline">
+                <div>
+                  <h3>Свои цели по питанию</h3>
+                  <p>Оставь поля пустыми, чтобы использовать автоматический расчет</p>
+                </div>
+                <Target className="muted-icon" />
+              </div>
+              <div className="grid-4 compact-grid custom-goals-grid">
+                <NumberField label="Ккал" value={profile.customCalories} onChange={(value) => updateProfile("customCalories", value)} placeholder={nutritionPlan.autoTargetCalories || nutritionPlan.targetCalories || ""} />
+                <NumberField label="Белки, г" value={profile.customProtein} onChange={(value) => updateProfile("customProtein", value)} placeholder={nutritionPlan.autoProtein || nutritionPlan.protein || ""} />
+                <NumberField label="Жиры, г" value={profile.customFat} onChange={(value) => updateProfile("customFat", value)} placeholder={nutritionPlan.autoFat || nutritionPlan.fat || ""} />
+                <NumberField label="Углев., г" value={profile.customCarbs} onChange={(value) => updateProfile("customCarbs", value)} placeholder={nutritionPlan.autoCarbs || nutritionPlan.carbs || ""} />
+              </div>
+            </div>
+
             <button type="button" className="primary-button profile-save-button" onClick={() => setEditing(false)}><Save size={18} /> Сохранить</button>
           </div>
         )}
@@ -2623,7 +2773,7 @@ function ProfileScreen({ profile, updateProfile, nutritionPlan, bmi, trend, weig
         <div className="section-head">
           <div>
             <h2>Цель по БЖУ</h2>
-            <p>Автоматический ориентир на день</p>
+            <p>{nutritionPlan.isCustom ? "Ручная цель на день" : "Автоматический ориентир на день"}</p>
           </div>
           <Apple className="muted-icon" />
         </div>
@@ -2632,7 +2782,7 @@ function ProfileScreen({ profile, updateProfile, nutritionPlan, bmi, trend, weig
           <MacroChip label="Жиры" value={nutritionPlan.fat} unit="г" />
           <MacroChip label="Углеводы" value={nutritionPlan.carbs} unit="г" />
         </div>
-        <p className="hint">Это расчетный ориентир, не медицинское назначение. При заболеваниях, беременности, РПП или приеме препаратов питание лучше согласовывать со специалистом.</p>
+        <p className="hint">Цели можно поменять вручную в режиме редактирования профиля. Это ориентир, не медицинское назначение: при заболеваниях, беременности, РПП или приеме препаратов питание лучше согласовывать со специалистом.</p>
       </div>
 
       <div className="card stack">
@@ -2905,9 +3055,9 @@ function WeightChart({ data, targetWeight }) {
   const points = [...data].filter((item) => numeric(item.weightKg) > 0).sort((a, b) => a.date.localeCompare(b.date));
   if (points.length < 2) return <div className="chart-empty">Недостаточно данных для графика</div>;
 
-  const width = 340;
-  const height = 190;
-  const pad = { top: 28, right: 42, bottom: 40, left: 48 };
+  const width = 390;
+  const height = 210;
+  const pad = { top: 30, right: 74, bottom: 48, left: 58 };
   const values = points.map((item) => numeric(item.weightKg));
   const target = numeric(targetWeight);
   const min = Math.min(...values, target || Infinity) - 1;
@@ -2934,11 +3084,11 @@ function WeightChart({ data, targetWeight }) {
       {targetY && <line x1={pad.left} y1={targetY} x2={width - pad.right} y2={targetY} className="target-line" />}
       <path d={path} className="weight-path" />
       {coords.map((point) => <circle key={point.id || point.date} cx={point.x} cy={point.y} r="4" className="weight-point" />)}
-      <text x={pad.left - 8} y={pad.top + 4} textAnchor="end" className="chart-label">{round(max, 1)} кг</text>
-      <text x={pad.left - 8} y={height - pad.bottom + 4} textAnchor="end" className="chart-label">{round(min, 1)} кг</text>
-      <text x={pad.left} y={height - 12} textAnchor="start" className="chart-date-label">{firstLabel}</text>
-      <text x={width - pad.right} y={height - 12} textAnchor="end" className="chart-date-label">{lastLabel}</text>
-      {targetY && <text x={width - pad.right} y={Math.max(14, targetY - 7)} textAnchor="end" className="target-label">цель {target} кг</text>}
+      <text x={pad.left - 10} y={pad.top + 4} textAnchor="end" className="chart-label">{round(max, 1)} кг</text>
+      <text x={pad.left - 10} y={height - pad.bottom + 4} textAnchor="end" className="chart-label">{round(min, 1)} кг</text>
+      <text x={pad.left} y={height - 15} textAnchor="start" className="chart-date-label">{firstLabel}</text>
+      <text x={width - pad.right} y={height - 15} textAnchor="middle" className="chart-date-label">{lastLabel}</text>
+      {targetY && <text x={width - 10} y={Math.max(14, targetY - 7)} textAnchor="end" className="target-label">цель {target} кг</text>}
     </svg>
   );
 }
