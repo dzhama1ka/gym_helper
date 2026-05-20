@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { createClient } from "@supabase/supabase-js";
 import {
   Activity,
   Apple,
@@ -46,6 +47,11 @@ const WEIGHT_LOG_KEY = "mobile-workout-tracker-weight-log-v1";
 const NUTRITION_KEY = "mobile-workout-tracker-nutrition-v1";
 const FAVORITE_FOODS_KEY = "mobile-workout-tracker-favorite-foods-v1";
 const SAVED_MENUS_KEY = "mobile-workout-tracker-saved-menus-v1";
+const CLOUD_TABLE = "app_state";
+const APP_STATE_VERSION = 6;
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "";
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
+const supabase = SUPABASE_URL && SUPABASE_ANON_KEY ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
 const exerciseLibrary = [
   {
@@ -672,6 +678,92 @@ function round(value, digits = 0) {
   return Math.round(numeric(value) * factor) / factor;
 }
 
+function createAppState({ entries, profile, weightLog, nutritionEntries, favoriteFoods, savedMenus }) {
+  return {
+    version: APP_STATE_VERSION,
+    savedAt: new Date().toISOString(),
+    entries: Array.isArray(entries) ? entries : [],
+    profile: { ...defaultProfile, ...(profile || {}) },
+    weightLog: Array.isArray(weightLog) ? weightLog : [],
+    nutritionEntries: Array.isArray(nutritionEntries) ? nutritionEntries : [],
+    favoriteFoods: Array.isArray(favoriteFoods) ? favoriteFoods : [],
+    savedMenus: Array.isArray(savedMenus) ? savedMenus : [],
+  };
+}
+
+function mergeById(cloudItems = [], localItems = []) {
+  const map = new Map();
+  [...cloudItems, ...localItems].forEach((item) => {
+    if (!item) return;
+    const id = item.id || uid();
+    map.set(id, { ...item, id });
+  });
+  return Array.from(map.values()).sort((a, b) => numeric(b.createdAt) - numeric(a.createdAt));
+}
+
+function mergeWeightLog(cloudItems = [], localItems = []) {
+  const map = new Map();
+  [...cloudItems, ...localItems].forEach((item) => {
+    if (!item?.date) return;
+    map.set(item.date, { ...item, id: item.id || uid() });
+  });
+  return Array.from(map.values()).sort((a, b) => b.date.localeCompare(a.date));
+}
+
+function mergeFavoriteFoods(cloudItems = [], localItems = []) {
+  const map = new Map();
+  [...cloudItems, ...localItems].forEach((item) => {
+    if (!item?.name) return;
+    map.set(normalize(item.name), { ...item, id: item.id || uid() });
+  });
+  return Array.from(map.values()).slice(0, 30);
+}
+
+function mergeAppStates(cloudState, localState, preferLocalProfile) {
+  const cloud = cloudState || {};
+  const local = localState || {};
+  return createAppState({
+    entries: mergeById(cloud.entries, local.entries),
+    profile: preferLocalProfile
+      ? { ...defaultProfile, ...(cloud.profile || {}), ...(local.profile || {}) }
+      : { ...defaultProfile, ...(local.profile || {}), ...(cloud.profile || {}) },
+    weightLog: mergeWeightLog(cloud.weightLog, local.weightLog),
+    nutritionEntries: mergeById(cloud.nutritionEntries, local.nutritionEntries),
+    favoriteFoods: mergeFavoriteFoods(cloud.favoriteFoods, local.favoriteFoods),
+    savedMenus: mergeById(cloud.savedMenus, local.savedMenus).slice(0, 20),
+  });
+}
+
+function pickNumber(...values) {
+  for (const value of values) {
+    const parsed = numeric(value, NaN);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+  return 0;
+}
+
+function parseServingGrams(value) {
+  if (!value) return 0;
+  const match = String(value).replace(",", ".").match(/(\d+(?:\.\d+)?)\s*g/i);
+  return match ? numeric(match[1]) : 0;
+}
+
+function extractOpenFoodFactsNutrients(nutriments = {}) {
+  const energyKcal = pickNumber(
+    nutriments["energy-kcal_100g"],
+    nutriments["energy-kcal"],
+    nutriments.energy_kcal_100g,
+    nutriments.energy_kcal
+  );
+  const energyKj = pickNumber(nutriments.energy_100g, nutriments.energy, nutriments["energy-kj_100g"], nutriments["energy-kj"]);
+  return {
+    calories: round(energyKcal || (energyKj ? energyKj / 4.184 : 0), 1),
+    protein: round(pickNumber(nutriments.proteins_100g, nutriments.proteins, nutriments.protein_100g), 1),
+    fat: round(pickNumber(nutriments.fat_100g, nutriments.fat), 1),
+    carbs: round(pickNumber(nutriments.carbohydrates_100g, nutriments.carbohydrates, nutriments.carbs_100g), 1),
+  };
+}
+
 function emptyWorkoutForm() {
   return {
     type: "strength",
@@ -727,6 +819,25 @@ function getExerciseInfo(name) {
 function formatMuscles(primary = [], secondary = []) {
   const all = [...primary, ...secondary];
   return all.length ? all.join(", ") : "нет данных";
+}
+
+const translitMap = {
+  а: "a", б: "b", в: "v", г: "g", д: "d", е: "e", ё: "e", ж: "zh", з: "z", и: "i", й: "y",
+  к: "k", л: "l", м: "m", н: "n", о: "o", п: "p", р: "r", с: "s", т: "t", у: "u",
+  ф: "f", х: "h", ц: "ts", ч: "ch", ш: "sh", щ: "sch", ъ: "", ы: "y", ь: "", э: "e", ю: "yu", я: "ya",
+};
+
+function slugifyExercise(name) {
+  return normalize(name)
+    .split("")
+    .map((letter) => translitMap[letter] ?? letter)
+    .join("")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "exercise";
+}
+
+function getExerciseImageSrc(name) {
+  return `/exercises/${slugifyExercise(name)}.png`;
 }
 
 function calculateExerciseCalories({ met, weightKg, minutes }) {
@@ -838,16 +949,28 @@ function App() {
   const [workoutForm, setWorkoutForm] = useState(emptyWorkoutForm());
   const [foodForm, setFoodForm] = useState(emptyFoodForm());
   const [query, setQuery] = useState("");
-  const [progressExercise, setProgressExercise] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [weightForm, setWeightForm] = useState({ date: todayISO(), weightKg: "" });
   const [scanner, setScanner] = useState({ active: false, message: "", product: null });
   const [restTimer, setRestTimer] = useState({ seconds: 90, left: 90, running: false });
   const [exerciseInfoName, setExerciseInfoName] = useState("");
+  const [session, setSession] = useState(null);
+  const [authLoading, setAuthLoading] = useState(Boolean(supabase));
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authMode, setAuthMode] = useState("signin");
+  const [authMessage, setAuthMessage] = useState("");
+  const [cloudStatus, setCloudStatus] = useState(supabase ? "Войдите, чтобы включить облачную синхронизацию" : "Supabase пока не подключен");
+  const [cloudLoaded, setCloudLoaded] = useState(false);
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   const scanFrameRef = useRef(null);
   const zxingControlsRef = useRef(null);
+  const hasLocalDataRef = useRef(false);
+  const skipCloudSaveRef = useRef(false);
+  const appStateRef = useRef(null);
+
+  appStateRef.current = createAppState({ entries, profile, weightLog, nutritionEntries, favoriteFoods, savedMenus });
 
   useEffect(() => {
     try {
@@ -858,6 +981,7 @@ function App() {
       const savedNutrition = localStorage.getItem(NUTRITION_KEY);
       const savedFavorites = localStorage.getItem(FAVORITE_FOODS_KEY);
       const savedMenusValue = localStorage.getItem(SAVED_MENUS_KEY);
+      hasLocalDataRef.current = Boolean(savedEntries || savedProfile || savedOldSettings || savedWeightLog || savedNutrition || savedFavorites || savedMenusValue);
 
       if (savedEntries) setEntries(JSON.parse(savedEntries));
       if (savedProfile) {
@@ -881,6 +1005,94 @@ function App() {
   useEffect(() => localStorage.setItem(NUTRITION_KEY, JSON.stringify(nutritionEntries)), [nutritionEntries]);
   useEffect(() => localStorage.setItem(FAVORITE_FOODS_KEY, JSON.stringify(favoriteFoods)), [favoriteFoods]);
   useEffect(() => localStorage.setItem(SAVED_MENUS_KEY, JSON.stringify(savedMenus)), [savedMenus]);
+
+
+  useEffect(() => {
+    if (!supabase) {
+      setAuthLoading(false);
+      return undefined;
+    }
+
+    let active = true;
+    supabase.auth.getSession().then(({ data, error }) => {
+      if (!active) return;
+      if (error) setAuthMessage(error.message);
+      setSession(data?.session || null);
+      setAuthLoading(false);
+    });
+
+    const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setSession(nextSession);
+      setAuthLoading(false);
+    });
+
+    return () => {
+      active = false;
+      data?.subscription?.unsubscribe?.();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!supabase || !session?.user?.id) {
+      setCloudLoaded(false);
+      return undefined;
+    }
+
+    let cancelled = false;
+    async function loadCloudState() {
+      try {
+        setCloudLoaded(false);
+        setCloudStatus("Загружаю облачные данные...");
+        const { data, error } = await supabase
+          .from(CLOUD_TABLE)
+          .select("state, updated_at")
+          .eq("user_id", session.user.id)
+          .maybeSingle();
+
+        if (cancelled) return;
+        if (error) throw error;
+
+        const localState = appStateRef.current;
+        const nextState = data?.state
+          ? mergeAppStates(data.state, localState, hasLocalDataRef.current)
+          : localState;
+
+        skipCloudSaveRef.current = true;
+        applyAppState(nextState);
+        window.setTimeout(() => { skipCloudSaveRef.current = false; }, 0);
+        await saveCloudState(session.user.id, nextState);
+
+        if (!cancelled) {
+          setCloudLoaded(true);
+          setCloudStatus(data?.state ? "Облако подключено · данные объединены" : "Облако подключено · локальные данные сохранены");
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setCloudLoaded(false);
+          setCloudStatus(`Ошибка синхронизации: ${error.message}`);
+        }
+      }
+    }
+
+    loadCloudState();
+    return () => { cancelled = true; };
+  }, [session?.user?.id]);
+
+  useEffect(() => {
+    if (!supabase || !session?.user?.id || !cloudLoaded || skipCloudSaveRef.current) return undefined;
+
+    const timeout = window.setTimeout(async () => {
+      try {
+        setCloudStatus("Сохраняю изменения...");
+        await saveCloudState(session.user.id, appStateRef.current);
+        setCloudStatus("Сохранено в облаке");
+      } catch (error) {
+        setCloudStatus(`Ошибка сохранения: ${error.message}`);
+      }
+    }, 900);
+
+    return () => window.clearTimeout(timeout);
+  }, [session?.user?.id, cloudLoaded, entries, profile, weightLog, nutritionEntries, favoriteFoods, savedMenus]);
 
   useEffect(() => {
     if (!restTimer.running) return undefined;
@@ -975,18 +1187,75 @@ function App() {
     };
   }, [dateEntries]);
 
-  const progressNames = useMemo(() => {
-    const names = Array.from(new Set(entries.map((entry) => entry.name))).sort((a, b) => a.localeCompare(b, "ru"));
-    return names.length ? names : exerciseNames;
-  }, [entries, exerciseNames]);
 
-  useEffect(() => {
-    if (!progressExercise && progressNames.length) setProgressExercise(progressNames[0]);
-  }, [progressExercise, progressNames]);
 
-  const selectedProgressEntries = useMemo(() => {
-    return entries.filter((entry) => entry.name === progressExercise).sort((a, b) => a.date.localeCompare(b.date));
-  }, [entries, progressExercise]);
+  function applyAppState(state) {
+    if (!state) return;
+    setEntries(Array.isArray(state.entries) ? state.entries : []);
+    setProfile({ ...defaultProfile, ...(state.profile || {}) });
+    setWeightLog(Array.isArray(state.weightLog) ? state.weightLog : []);
+    setNutritionEntries(Array.isArray(state.nutritionEntries) ? state.nutritionEntries : []);
+    setFavoriteFoods(Array.isArray(state.favoriteFoods) ? state.favoriteFoods : []);
+    setSavedMenus(Array.isArray(state.savedMenus) ? state.savedMenus : []);
+  }
+
+  async function saveCloudState(userId, state) {
+    if (!supabase || !userId) return;
+    const { error } = await supabase.from(CLOUD_TABLE).upsert(
+      {
+        user_id: userId,
+        state,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "user_id" }
+    );
+    if (error) throw error;
+  }
+
+  async function handleAuthSubmit(event) {
+    event.preventDefault();
+    if (!supabase) {
+      setAuthMessage("Supabase не подключен: добавь VITE_SUPABASE_URL и VITE_SUPABASE_ANON_KEY.");
+      return;
+    }
+    const email = authEmail.trim();
+    const password = authPassword;
+    if (!email || password.length < 6) {
+      setAuthMessage("Введи email и пароль минимум 6 символов.");
+      return;
+    }
+
+    setAuthLoading(true);
+    setAuthMessage("");
+    try {
+      const result = authMode === "signup"
+        ? await supabase.auth.signUp({ email, password })
+        : await supabase.auth.signInWithPassword({ email, password });
+      if (result.error) throw result.error;
+      setAuthMessage(authMode === "signup" ? "Аккаунт создан. Если включено подтверждение email, проверь почту." : "Вход выполнен.");
+      setAuthPassword("");
+    } catch (error) {
+      setAuthMessage(error.message || "Не удалось выполнить вход.");
+    } finally {
+      setAuthLoading(false);
+    }
+  }
+
+  async function handleSignOut() {
+    if (!supabase) return;
+    setAuthLoading(true);
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+      setSession(null);
+      setCloudLoaded(false);
+      setCloudStatus("Вы вышли. Данные остаются локально на устройстве.");
+    } catch (error) {
+      setAuthMessage(error.message || "Не удалось выйти.");
+    } finally {
+      setAuthLoading(false);
+    }
+  }
 
   function updateProfile(field, value) {
     setProfile((current) => ({ ...current, [field]: value }));
@@ -1176,7 +1445,7 @@ function App() {
   }
 
   function addNutritionEntry(event) {
-    event.preventDefault();
+    event?.preventDefault?.();
     const food = foodSource;
     const grams = numeric(foodForm.grams);
     if (!food.name || grams <= 0) return;
@@ -1196,6 +1465,7 @@ function App() {
       ...current,
     ]);
     setFoodForm(emptyFoodForm());
+    setScanner((current) => current.product?.name ? { ...current, product: null, message: `Добавлено: ${food.name}` } : current);
   }
 
   function deleteNutritionEntry(id) {
@@ -1281,21 +1551,27 @@ function App() {
     if (data.status !== 1 || !data.product) throw new Error("Продукт не найден в базе Open Food Facts");
 
     const nutriments = data.product.nutriments || {};
-    const calories = nutriments["energy-kcal_100g"] || nutriments["energy-kcal"] || 0;
-    const protein = nutriments.proteins_100g || 0;
-    const fat = nutriments.fat_100g || 0;
-    const carbs = nutriments.carbohydrates_100g || 0;
+    const per100 = extractOpenFoodFactsNutrients(nutriments);
     const name = [data.product.product_name, data.product.brands].filter(Boolean).join(" · ") || `Продукт ${code}`;
+    const servingGrams = parseServingGrams(data.product.serving_size);
+    const hasMacros = per100.calories || per100.protein || per100.fat || per100.carbs;
 
     setFoodForm((current) => ({
       ...current,
       name,
-      calories: String(round(calories, 1)),
-      protein: String(round(protein, 1)),
-      fat: String(round(fat, 1)),
-      carbs: String(round(carbs, 1)),
+      grams: current.grams || String(servingGrams || 100),
+      calories: String(per100.calories || ""),
+      protein: String(per100.protein || ""),
+      fat: String(per100.fat || ""),
+      carbs: String(per100.carbs || ""),
     }));
-    setScanner({ active: false, message: `Найдено: ${name}`, product: { code, name } });
+    setScanner({
+      active: false,
+      message: hasMacros
+        ? `Найдено: ${name}. КБЖУ заполнены на 100 г — проверь граммы и нажми «Добавить».`
+        : `Найдено: ${name}, но в базе нет полного КБЖУ. Введи данные с этикетки вручную.`,
+      product: { code, name, per100 },
+    });
   }
 
   function stopScanner() {
@@ -1504,7 +1780,7 @@ function App() {
                   <div className="stack">
                     {selectedExerciseInfo && (
                       <div className="exercise-help-strip">
-                        <MuscleMiniMap primary={selectedExerciseInfo.primary} secondary={selectedExerciseInfo.secondary} />
+                        <img className="exercise-thumb" src={getExerciseImageSrc(selectedExerciseInfo.name)} alt="" loading="lazy" />
                         <div>
                           <strong>{selectedExerciseInfo.category}</strong>
                           <p>{formatMuscles(selectedExerciseInfo.primary, selectedExerciseInfo.secondary)}</p>
@@ -1564,20 +1840,6 @@ function App() {
             />
           )}
 
-          {tab === "progress" && (
-            <ProgressScreen
-              query={query}
-              setQuery={setQuery}
-              progressNames={progressNames}
-              progressExercise={progressExercise}
-              setProgressExercise={setProgressExercise}
-              selectedProgressEntries={selectedProgressEntries}
-              sortedHistoryDates={sortedHistoryDates}
-              groupedHistory={groupedHistory}
-              deleteWorkoutEntry={deleteWorkoutEntry}
-              openExerciseInfo={setExerciseInfoName}
-            />
-          )}
 
           {tab === "profile" && (
             <ProfileScreen
@@ -1591,6 +1853,22 @@ function App() {
               addWeightRecord={addWeightRecord}
               weightLog={weightLog}
               deleteWeightRecord={deleteWeightRecord}
+              auth={{
+                enabled: Boolean(supabase),
+                session,
+                authLoading,
+                authEmail,
+                setAuthEmail,
+                authPassword,
+                setAuthPassword,
+                authMode,
+                setAuthMode,
+                authMessage,
+                cloudStatus,
+                cloudLoaded,
+                handleAuthSubmit,
+                handleSignOut,
+              }}
             />
           )}
         </main>
@@ -1599,7 +1877,6 @@ function App() {
           <BottomNavButton active={tab === "dashboard"} onClick={() => setTab("dashboard")} icon={Home} label="Сегодня" />
           <BottomNavButton active={tab === "training"} onClick={() => setTab("training")} icon={Dumbbell} label="Трен" />
           <BottomNavButton active={tab === "nutrition"} onClick={() => setTab("nutrition")} icon={Utensils} label="Питание" />
-          <BottomNavButton active={tab === "progress"} onClick={() => setTab("progress")} icon={BarChart3} label="Прогресс" />
           <BottomNavButton active={tab === "profile"} onClick={() => setTab("profile")} icon={UserRound} label="Профиль" />
         </nav>
 
@@ -1913,6 +2190,15 @@ function NutritionScreen({
           <button type="button" className="tiny-link" onClick={submitManualBarcode}>Найти</button>
         </div>
         {scanner.message && <p className="hint">{scanner.message}</p>}
+        {scanner.product?.name && (
+          <div className="scanner-product-card">
+            <div>
+              <strong>{scanner.product.name}</strong>
+              <p>{scanner.product.per100?.calories || 0} ккал · Б {scanner.product.per100?.protein || 0} · Ж {scanner.product.per100?.fat || 0} · У {scanner.product.per100?.carbs || 0} на 100 г</p>
+            </div>
+            <button type="button" className="primary-button" onClick={() => addNutritionEntry()}><Plus size={18} /> Добавить найденный продукт</button>
+          </div>
+        )}
         <p className="hint">В Safari используется fallback через ZXing. Камера работает только на HTTPS или localhost. По фото тарелки точность ограничена: без веса порции приложение не знает реальное количество граммов.</p>
       </div>
 
@@ -1984,49 +2270,167 @@ function ProgressScreen({ query, setQuery, progressNames, progressExercise, setP
   );
 }
 
-function ProfileScreen({ profile, updateProfile, nutritionPlan, bmi, trend, weightForm, setWeightForm, addWeightRecord, weightLog, deleteWeightRecord }) {
-  return (
-    <section className="screen stack">
-      <div className="card stack">
-        <div className="section-head">
+
+function AuthCard({ auth }) {
+  if (!auth) return null;
+
+  if (!auth.enabled) {
+    return (
+      <div className="card auth-card stack small-gap">
+        <div className="section-head inline">
           <div>
-            <h2>Профиль</h2>
-            <p>Эти данные нужны для ккал, БЖУ и графика веса</p>
+            <h2>Аккаунт и синхронизация</h2>
+            <p>Авторизация подготовлена, но Supabase еще не подключен</p>
           </div>
           <UserRound className="muted-icon" />
         </div>
+        <p className="hint">Добавь в Vercel переменные VITE_SUPABASE_URL и VITE_SUPABASE_ANON_KEY, затем создай таблицу app_state из файла supabase-schema.sql.</p>
+      </div>
+    );
+  }
 
-        <div className="field">
-          <label>Имя</label>
-          <input value={profile.name} onChange={(event) => updateProfile("name", event.target.value)} placeholder="Например: Мария" />
+  if (auth.session?.user) {
+    return (
+      <div className="card auth-card stack small-gap">
+        <div className="section-head inline">
+          <div>
+            <h2>Аккаунт подключен</h2>
+            <p>{auth.session.user.email}</p>
+          </div>
+          <span className={`sync-badge ${auth.cloudLoaded ? "ready" : "pending"}`}>{auth.cloudLoaded ? "sync" : "..."}</span>
+        </div>
+        <div className="cloud-status">{auth.cloudStatus}</div>
+        <button type="button" className="secondary-button" onClick={auth.handleSignOut} disabled={auth.authLoading}>Выйти</button>
+      </div>
+    );
+  }
+
+  return (
+    <form className="card auth-card stack small-gap" onSubmit={auth.handleAuthSubmit}>
+      <div className="section-head inline">
+        <div>
+          <h2>Аккаунт и синхронизация</h2>
+          <p>Войди, чтобы данные были доступны с телефона и компьютера</p>
+        </div>
+        <UserRound className="muted-icon" />
+      </div>
+      <div className="segmented">
+        <button type="button" className={auth.authMode === "signin" ? "active" : ""} onClick={() => auth.setAuthMode("signin")}>Вход</button>
+        <button type="button" className={auth.authMode === "signup" ? "active" : ""} onClick={() => auth.setAuthMode("signup")}>Регистрация</button>
+      </div>
+      <div className="field">
+        <label>Email</label>
+        <input type="email" value={auth.authEmail} onChange={(event) => auth.setAuthEmail(event.target.value)} placeholder="you@example.com" autoComplete="email" />
+      </div>
+      <div className="field">
+        <label>Пароль</label>
+        <input type="password" value={auth.authPassword} onChange={(event) => auth.setAuthPassword(event.target.value)} placeholder="Минимум 6 символов" autoComplete={auth.authMode === "signup" ? "new-password" : "current-password"} />
+      </div>
+      <button type="submit" className="primary-button" disabled={auth.authLoading}>{auth.authLoading ? "Подождите..." : auth.authMode === "signup" ? "Создать аккаунт" : "Войти"}</button>
+      {auth.authMessage && <p className="hint">{auth.authMessage}</p>}
+      <p className="hint">После входа локальные данные объединяются с облаком и дальше сохраняются автоматически.</p>
+    </form>
+  );
+}
+
+function ProfileMetric({ icon: Icon, label, value, detail }) {
+  return (
+    <div className="profile-metric">
+      <div className="profile-metric-icon"><Icon size={18} /></div>
+      <span>{label}</span>
+      <strong>{value}</strong>
+      {detail && <small>{detail}</small>}
+    </div>
+  );
+}
+
+function ProfileScreen({ profile, updateProfile, nutritionPlan, bmi, trend, weightForm, setWeightForm, addWeightRecord, weightLog, deleteWeightRecord, auth }) {
+  const [editing, setEditing] = useState(false);
+  const activity = activityLevels.find((level) => level.value === profile.activityLevel) || activityLevels[2];
+  const currentWeight = numeric(profile.weightKg);
+  const targetWeight = numeric(profile.targetWeightKg);
+  const goalDelta = targetWeight && currentWeight ? round(targetWeight - currentWeight, 1) : 0;
+  const goalLabel = goalDelta === 0 ? "поддержание" : `${goalDelta > 0 ? "+" : ""}${goalDelta} кг до цели`;
+  const sexLabel = profile.sex === "male" ? "мужской" : "женский";
+
+  return (
+    <section className="screen stack">
+      <AuthCard auth={auth} />
+      <div className="card profile-hero-card">
+        <div className="profile-hero-main">
+          <div className="profile-avatar"><UserRound size={28} /></div>
+          <div className="profile-title-block">
+            <p className="eyebrow">Личный профиль</p>
+            <h2>{profile.name?.trim() || "Мой профиль"}</h2>
+            <p>{sexLabel} · {profile.age || "—"} лет · {activity.label.toLowerCase()}</p>
+          </div>
+          <button type="button" className="edit-profile-button" onClick={() => setEditing((value) => !value)}>
+            {editing ? <><Save size={17} /> Готово</> : <><UserRound size={17} /> Редактировать профиль</>}
+          </button>
         </div>
 
-        <div className="grid-2">
+        <div className="goal-strip">
+          <div>
+            <span>Текущая цель</span>
+            <strong>{goalLabel}</strong>
+          </div>
+          <div>
+            <span>Калории на день</span>
+            <strong>{nutritionPlan.targetCalories || 0} ккал</strong>
+          </div>
+        </div>
+
+        <div className="profile-overview-grid">
+          <ProfileMetric icon={Weight} label="Вес" value={`${profile.weightKg || "—"} кг`} detail="используется в кардио" />
+          <ProfileMetric icon={Target} label="Цель" value={`${profile.targetWeightKg || "—"} кг`} detail={`темп ${profile.weeklyChangeKg || "—"} кг/нед.`} />
+          <ProfileMetric icon={Activity} label="Активность" value={activity.label} detail={activity.detail} />
+          <ProfileMetric icon={Calculator} label="BMI" value={bmi ? round(bmi, 1) : "—"} detail={bmiCategory(bmi)} />
+        </div>
+      </div>
+
+      {editing && (
+        <div className="card stack profile-editor">
+          <div className="section-head">
+            <div>
+              <h2>Редактирование профиля</h2>
+              <p>Меняй данные здесь — расчеты обновятся автоматически</p>
+            </div>
+            <button type="button" className="icon-button" onClick={() => setEditing(false)} aria-label="Закрыть редактирование"><X size={18} /></button>
+          </div>
+
           <div className="field">
-            <label>Пол</label>
-            <select value={profile.sex} onChange={(event) => updateProfile("sex", event.target.value)}>
-              <option value="female">Женский</option>
-              <option value="male">Мужской</option>
+            <label>Имя</label>
+            <input value={profile.name} onChange={(event) => updateProfile("name", event.target.value)} placeholder="Например: Мария" />
+          </div>
+
+          <div className="grid-2">
+            <div className="field">
+              <label>Пол</label>
+              <select value={profile.sex} onChange={(event) => updateProfile("sex", event.target.value)}>
+                <option value="female">Женский</option>
+                <option value="male">Мужской</option>
+              </select>
+            </div>
+            <NumberField label="Возраст" value={profile.age} onChange={(value) => updateProfile("age", value)} />
+          </div>
+
+          <div className="grid-3">
+            <NumberField label="Рост, см" value={profile.heightCm} onChange={(value) => updateProfile("heightCm", value)} />
+            <NumberField label="Вес, кг" value={profile.weightKg} onChange={(value) => updateProfile("weightKg", value)} />
+            <NumberField label="Цель, кг" value={profile.targetWeightKg} onChange={(value) => updateProfile("targetWeightKg", value)} />
+          </div>
+
+          <div className="field">
+            <label>Активность</label>
+            <select value={profile.activityLevel} onChange={(event) => updateProfile("activityLevel", event.target.value)}>
+              {activityLevels.map((level) => <option key={level.value} value={level.value}>{level.label} · {level.detail}</option>)}
             </select>
           </div>
-          <NumberField label="Возраст" value={profile.age} onChange={(value) => updateProfile("age", value)} />
-        </div>
 
-        <div className="grid-3">
-          <NumberField label="Рост, см" value={profile.heightCm} onChange={(value) => updateProfile("heightCm", value)} />
-          <NumberField label="Вес, кг" value={profile.weightKg} onChange={(value) => updateProfile("weightKg", value)} />
-          <NumberField label="Цель, кг" value={profile.targetWeightKg} onChange={(value) => updateProfile("targetWeightKg", value)} />
+          <NumberField label="План изменения веса, кг/нед." value={profile.weeklyChangeKg} onChange={(value) => updateProfile("weeklyChangeKg", value)} />
+          <button type="button" className="primary-button" onClick={() => setEditing(false)}><Save size={18} /> Сохранить и скрыть форму</button>
         </div>
-
-        <div className="field">
-          <label>Активность</label>
-          <select value={profile.activityLevel} onChange={(event) => updateProfile("activityLevel", event.target.value)}>
-            {activityLevels.map((level) => <option key={level.value} value={level.value}>{level.label} · {level.detail}</option>)}
-          </select>
-        </div>
-
-        <NumberField label="План изменения веса, кг/нед." value={profile.weeklyChangeKg} onChange={(value) => updateProfile("weeklyChangeKg", value)} />
-      </div>
+      )}
 
       <div className="grid-2">
         <StatCard icon={Calculator} label="BMR" value={`${nutritionPlan.bmr || 0}`} suffix="ккал" />
@@ -2035,7 +2439,7 @@ function ProfileScreen({ profile, updateProfile, nutritionPlan, bmi, trend, weig
         <StatCard icon={Weight} label="BMI" value={bmi ? round(bmi, 1) : "—"} suffix={bmiCategory(bmi)} />
       </div>
 
-      <div className="card stack">
+      <div className="card stack macro-goal-card">
         <div className="section-head">
           <div>
             <h2>Цель по БЖУ</h2>
@@ -2125,6 +2529,18 @@ function MuscleDiagram({ primary = [], secondary = [] }) {
   );
 }
 
+function ExerciseImagePanel({ info }) {
+  return (
+    <div className="exercise-image-panel">
+      <img src={getExerciseImageSrc(info.name)} alt={`Карта мышц: ${info.name}`} loading="lazy" />
+      <div className="muscle-legend image-legend">
+        <span><i className="legend-dot primary" /> основная нагрузка</span>
+        <span><i className="legend-dot secondary" /> вспомогательно</span>
+      </div>
+    </div>
+  );
+}
+
 function ExerciseInfoModal({ name, onClose }) {
   const info = getExerciseInfo(name);
   if (!info) return null;
@@ -2140,7 +2556,7 @@ function ExerciseInfoModal({ name, onClose }) {
           <button type="button" className="icon-button" onClick={onClose} aria-label="Закрыть"><X size={18} /></button>
         </div>
 
-        <MuscleDiagram primary={info.primary} secondary={info.secondary} />
+        <ExerciseImagePanel info={info} />
 
         <div className="muscle-chip-row">
           {info.primary.map((muscle) => <span key={`p-${muscle}`} className="muscle-chip primary">{muscle}</span>)}
@@ -2235,7 +2651,7 @@ function ExerciseCard({ entry, onDelete, onRest, onInfo, compact = false }) {
       {isCardio && entry.intensityLabel && <p className="hint tight">{entry.intensityLabel}</p>}
       {!isCardio && exerciseInfo && (
         <div className="muscle-summary">
-          <MuscleMiniMap primary={exerciseInfo.primary} secondary={exerciseInfo.secondary} />
+          <img className="exercise-thumb" src={getExerciseImageSrc(exerciseInfo.name)} alt="" loading="lazy" />
           <p><strong>{exerciseInfo.primary.join(", ")}</strong>{exerciseInfo.secondary.length ? ` · также: ${exerciseInfo.secondary.join(", ")}` : ""}</p>
         </div>
       )}
