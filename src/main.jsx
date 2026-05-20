@@ -48,8 +48,9 @@ const NUTRITION_KEY = "mobile-workout-tracker-nutrition-v1";
 const FAVORITE_FOODS_KEY = "mobile-workout-tracker-favorite-foods-v1";
 const SAVED_MENUS_KEY = "mobile-workout-tracker-saved-menus-v1";
 const SCANNED_FOODS_KEY = "mobile-workout-tracker-scanned-foods-v1";
+const LAST_AUTH_USER_KEY = "mobile-workout-tracker-last-auth-user-v1";
 const CLOUD_TABLE = "app_state";
-const APP_STATE_VERSION = 9;
+const APP_STATE_VERSION = 10;
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "";
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
 const supabase = SUPABASE_URL && SUPABASE_ANON_KEY ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
@@ -1020,6 +1021,7 @@ function App() {
   const [authMessage, setAuthMessage] = useState("");
   const [cloudStatus, setCloudStatus] = useState(supabase ? "Войдите, чтобы включить облачную синхронизацию" : "Supabase пока не подключен");
   const [cloudLoaded, setCloudLoaded] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   const scanFrameRef = useRef(null);
@@ -1049,7 +1051,7 @@ function App() {
         setProfile({ ...defaultProfile, ...JSON.parse(savedProfile) });
       } else if (savedOldSettings) {
         const oldSettings = JSON.parse(savedOldSettings);
-        setProfile({ ...defaultProfile, weightKg: String(oldSettings.bodyWeightKg || "70") });
+        setProfile({ ...defaultProfile, weightKg: String(oldSettings.bodyWeightKg || "") });
       }
       if (savedWeightLog) setWeightLog(JSON.parse(savedWeightLog));
       if (savedNutrition) setNutritionEntries(JSON.parse(savedNutrition));
@@ -1058,16 +1060,18 @@ function App() {
       if (savedScannedFoods) setScannedFoods(JSON.parse(savedScannedFoods));
     } catch (error) {
       console.error("Не удалось загрузить данные", error);
+    } finally {
+      setHydrated(true);
     }
   }, []);
 
-  useEffect(() => localStorage.setItem(WORKOUT_KEY, JSON.stringify(entries)), [entries]);
-  useEffect(() => localStorage.setItem(PROFILE_KEY, JSON.stringify(profile)), [profile]);
-  useEffect(() => localStorage.setItem(WEIGHT_LOG_KEY, JSON.stringify(weightLog)), [weightLog]);
-  useEffect(() => localStorage.setItem(NUTRITION_KEY, JSON.stringify(nutritionEntries)), [nutritionEntries]);
-  useEffect(() => localStorage.setItem(FAVORITE_FOODS_KEY, JSON.stringify(favoriteFoods)), [favoriteFoods]);
-  useEffect(() => localStorage.setItem(SAVED_MENUS_KEY, JSON.stringify(savedMenus)), [savedMenus]);
-  useEffect(() => localStorage.setItem(SCANNED_FOODS_KEY, JSON.stringify(scannedFoods)), [scannedFoods]);
+  useEffect(() => { if (hydrated) localStorage.setItem(WORKOUT_KEY, JSON.stringify(entries)); }, [hydrated, entries]);
+  useEffect(() => { if (hydrated) localStorage.setItem(PROFILE_KEY, JSON.stringify(profile)); }, [hydrated, profile]);
+  useEffect(() => { if (hydrated) localStorage.setItem(WEIGHT_LOG_KEY, JSON.stringify(weightLog)); }, [hydrated, weightLog]);
+  useEffect(() => { if (hydrated) localStorage.setItem(NUTRITION_KEY, JSON.stringify(nutritionEntries)); }, [hydrated, nutritionEntries]);
+  useEffect(() => { if (hydrated) localStorage.setItem(FAVORITE_FOODS_KEY, JSON.stringify(favoriteFoods)); }, [hydrated, favoriteFoods]);
+  useEffect(() => { if (hydrated) localStorage.setItem(SAVED_MENUS_KEY, JSON.stringify(savedMenus)); }, [hydrated, savedMenus]);
+  useEffect(() => { if (hydrated) localStorage.setItem(SCANNED_FOODS_KEY, JSON.stringify(scannedFoods)); }, [hydrated, scannedFoods]);
 
 
   useEffect(() => {
@@ -1100,6 +1104,7 @@ function App() {
       setCloudLoaded(false);
       return undefined;
     }
+    if (!hydrated) return undefined;
 
     let cancelled = false;
     async function loadCloudState() {
@@ -1116,9 +1121,11 @@ function App() {
         if (error) throw error;
 
         const localState = appStateRef.current;
+        const lastAuthUserId = localStorage.getItem(LAST_AUTH_USER_KEY);
+        const shouldMergeLocal = hasLocalDataRef.current && (!lastAuthUserId || lastAuthUserId === session.user.id);
         const nextState = data?.state
-          ? mergeAppStates(data.state, localState, hasLocalDataRef.current)
-          : localState;
+          ? shouldMergeLocal ? mergeAppStates(data.state, localState, true) : createAppState(data.state)
+          : shouldMergeLocal ? localState : createAppState({});
 
         if (data?.updated_at) lastCloudUpdatedAtRef.current = data.updated_at;
         skipCloudSaveRef.current = true;
@@ -1129,8 +1136,10 @@ function App() {
         if (savedRow?.updated_at) lastCloudUpdatedAtRef.current = savedRow.updated_at;
 
         if (!cancelled) {
+          localStorage.setItem(LAST_AUTH_USER_KEY, session.user.id);
+          hasLocalDataRef.current = true;
           setCloudLoaded(true);
-          setCloudStatus(data?.state ? "Облако подключено · данные объединены" : "Облако подключено · локальные данные сохранены");
+          setCloudStatus(data?.state ? "Облако подключено · данные синхронизированы" : "Облако подключено · данные сохранены");
         }
       } catch (error) {
         if (!cancelled) {
@@ -1142,7 +1151,7 @@ function App() {
 
     loadCloudState();
     return () => { cancelled = true; };
-  }, [session?.user?.id]);
+  }, [session?.user?.id, hydrated]);
 
   useEffect(() => {
     if (!supabase || !session?.user?.id || !cloudLoaded || skipCloudSaveRef.current) return undefined;
@@ -1612,6 +1621,33 @@ function App() {
     });
   }
 
+  function isSavedUserFood(id) {
+    return scannedFoods.some((item) => item.id === id);
+  }
+
+  function saveFoodToGeneralList(food, grams = 100, meta = {}) {
+    if (!food?.name || !numeric(food.calories)) return null;
+    const manualSlug = normalize(food.name).replace(/[^a-zа-я0-9]+/gi, "-").replace(/^-|-$/g, "");
+    const id = meta.id || (meta.code ? `scan-${meta.code}` : `manual-${manualSlug || uid()}`);
+    const saved = {
+      id,
+      code: meta.code || "",
+      source: meta.source || "manual",
+      name: food.name,
+      calories: numeric(food.calories),
+      protein: numeric(food.protein),
+      fat: numeric(food.fat),
+      carbs: numeric(food.carbs),
+      defaultGrams: numeric(grams, 100),
+      createdAt: Date.now(),
+    };
+    setScannedFoods((current) => {
+      const withoutSame = current.filter((item) => item.id !== id && normalize(item.name) !== normalize(saved.name) && (!saved.code || item.code !== saved.code));
+      return [saved, ...withoutSame].slice(0, 100);
+    });
+    return saved;
+  }
+
   function addNutritionEntry(event) {
     event?.preventDefault?.();
     const food = foodSource;
@@ -1619,6 +1655,9 @@ function App() {
     if (!food.name || grams <= 0) return;
 
     const total = calculateFoodAmount(food, grams);
+    if (foodForm.name.trim()) {
+      saveFoodToGeneralList(food, grams, { source: "manual" });
+    }
     setNutritionEntries((current) => [
       {
         id: uid(),
@@ -1750,21 +1789,11 @@ function App() {
       carbs: String(per100.carbs || ""),
     }));
     if (hasMacros) {
-      setScannedFoods((current) => {
-        const saved = {
-          id: `scan-${code}`,
-          code,
-          name,
-          calories: numeric(per100.calories),
-          protein: numeric(per100.protein),
-          fat: numeric(per100.fat),
-          carbs: numeric(per100.carbs),
-          defaultGrams: servingGrams || 100,
-          createdAt: Date.now(),
-        };
-        const withoutSame = current.filter((item) => item.code !== code && normalize(item.name) !== normalize(name));
-        return [saved, ...withoutSame].slice(0, 80);
-      });
+      saveFoodToGeneralList(
+        { name, calories: per100.calories, protein: per100.protein, fat: per100.fat, carbs: per100.carbs },
+        servingGrams || 100,
+        { code, source: "scan" }
+      );
     }
     setScanner({
       active: false,
@@ -2441,7 +2470,7 @@ function NutritionScreen({
             </select>
           </div>
 
-          {selectedFood?.code && (
+          {selectedFood && isSavedUserFood(selectedFood.id) && (
             <div className="selected-food-row">
               <div>
                 <strong>{selectedFood.name}</strong>
