@@ -1905,6 +1905,12 @@ function App() {
             </div>
             <div className="logo"><HeartPulse /></div>
           </div>
+          <div className="mobile-section-strip" aria-label="Разделы приложения">
+            <button type="button" className={tab === "dashboard" ? "active" : ""} onClick={() => setTab("dashboard")}>Сегодня</button>
+            <button type="button" className={tab === "training" ? "active" : ""} onClick={() => setTab("training")}>Трен</button>
+            <button type="button" className={tab === "nutrition" ? "active" : ""} onClick={() => setTab("nutrition")}>Питание</button>
+            <button type="button" className={tab === "profile" ? "active" : ""} onClick={() => setTab("profile")}>Профиль</button>
+          </div>
         </header>
 
         <main className="main with-bottom-nav">
