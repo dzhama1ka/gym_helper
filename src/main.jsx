@@ -15,6 +15,7 @@ import {
   HeartPulse,
   History,
   Home,
+  Info,
   LineChart,
   ListPlus,
   Pause,
@@ -46,23 +47,416 @@ const NUTRITION_KEY = "mobile-workout-tracker-nutrition-v1";
 const FAVORITE_FOODS_KEY = "mobile-workout-tracker-favorite-foods-v1";
 const SAVED_MENUS_KEY = "mobile-workout-tracker-saved-menus-v1";
 
-const strengthExercises = [
-  "Жим лёжа",
-  "Приседания",
-  "Становая тяга",
-  "Подтягивания",
-  "Жим гантелей",
-  "Тяга верхнего блока",
-  "Тяга штанги в наклоне",
-  "Жим ногами",
-  "Румынская тяга",
-  "Разгибание ног",
-  "Сгибание ног",
-  "Подъём на бицепс",
-  "Французский жим",
-  "Выпады",
-  "Планка",
+const exerciseLibrary = [
+  {
+    name: "Жим лёжа",
+    category: "Грудь",
+    equipment: "штанга / скамья",
+    primary: ["Грудь"],
+    secondary: ["Трицепс", "Передняя дельта"],
+    steps: [
+      "Ляг так, чтобы глаза были примерно под грифом, лопатки сведены и опущены.",
+      "Поставь стопы устойчиво, возьми гриф чуть шире плеч.",
+      "Опускай гриф к нижней части груди, сохраняя контроль и напряжение корпуса.",
+      "Выжимай гриф вверх по небольшой дуге, не отрывая плечи от скамьи."
+    ],
+    tips: ["Не отбивай гриф от груди", "Держи запястья над локтями", "Оставляй 1–2 повтора в запасе, если нет страховки"],
+    mistakes: ["локти строго в стороны", "отрыв таза", "слишком быстрый негатив"]
+  },
+  {
+    name: "Приседания",
+    category: "Ноги",
+    equipment: "штанга / стойка",
+    primary: ["Квадрицепс", "Ягодицы"],
+    secondary: ["Задняя поверхность бедра", "Кор"],
+    steps: [
+      "Поставь стопы примерно на ширине плеч, носки слегка наружу.",
+      "Напряги корпус, держи грудную клетку раскрытой и взгляд вперед.",
+      "Опускайся, уводя колени по направлению носков, не заваливая их внутрь.",
+      "Поднимайся через всю стопу, сохраняя спину нейтральной."
+    ],
+    tips: ["Глубина — до комфортного контроля", "Колени двигаются в сторону носков", "Не расслабляй корпус внизу"],
+    mistakes: ["круглая спина", "колени внутрь", "отрыв пяток"]
+  },
+  {
+    name: "Становая тяга",
+    category: "Спина / ноги",
+    equipment: "штанга",
+    primary: ["Задняя поверхность бедра", "Ягодицы", "Спина"],
+    secondary: ["Кор", "Предплечья", "Трапеции"],
+    steps: [
+      "Подойди к грифу: он примерно над серединой стопы.",
+      "Возьми гриф, натяни корпус и держи спину нейтральной.",
+      "Начинай движение ногами, гриф веди близко к телу.",
+      "Вверху выпрямись без переразгибания поясницы, затем верни гриф под контролем."
+    ],
+    tips: ["Гриф скользит близко к ногам", "Сначала создай напряжение, потом тяни", "Лучше меньше вес, но ровная техника"],
+    mistakes: ["рывок с расслабленной спиной", "гриф далеко от тела", "запрокидывание корпуса назад"]
+  },
+  {
+    name: "Подтягивания",
+    category: "Спина",
+    equipment: "турник",
+    primary: ["Широчайшие"],
+    secondary: ["Бицепс", "Предплечья", "Кор"],
+    steps: [
+      "Возьмись за перекладину и слегка опусти плечи от ушей.",
+      "Начинай движение лопатками, затем тяни грудь к перекладине.",
+      "Поднимайся без раскачки и рывков.",
+      "Опускайся контролируемо почти до полного выпрямления рук."
+    ],
+    tips: ["Думай: локти вниз", "Не задирай подбородок", "Используй резинку, если техника ломается"],
+    mistakes: ["раскачка", "полуамплитуда", "плечи у ушей"]
+  },
+  {
+    name: "Жим гантелей",
+    category: "Грудь",
+    equipment: "гантели / скамья",
+    primary: ["Грудь"],
+    secondary: ["Трицепс", "Передняя дельта"],
+    steps: [
+      "Ляг на скамью, сведи лопатки и стабилизируй стопы.",
+      "Держи гантели над грудью, ладони слегка развернуты внутрь.",
+      "Опускай гантели до комфортной глубины, локти под контролем.",
+      "Выжимай вверх, не сталкивая гантели слишком резко."
+    ],
+    tips: ["Контролируй нижнюю точку", "Не растягивай плечо через боль", "Держи одинаковую траекторию рук"],
+    mistakes: ["слишком глубокое опускание", "потеря лопаток", "рывок внизу"]
+  },
+  {
+    name: "Тяга верхнего блока",
+    category: "Спина",
+    equipment: "верхний блок",
+    primary: ["Широчайшие"],
+    secondary: ["Бицепс", "Задняя дельта"],
+    steps: [
+      "Сядь так, чтобы бедра были зафиксированы валиком.",
+      "Слегка отклонись назад и опусти плечи.",
+      "Тяни рукоять к верхней части груди, ведя локти вниз.",
+      "Верни рукоять вверх медленно, сохраняя контроль лопаток."
+    ],
+    tips: ["Не тяни только руками", "Грудь тянется к рукояти", "Не бросай вес вверх"],
+    mistakes: ["сильный отклон корпуса", "рывок", "плечи поднимаются к ушам"]
+  },
+  {
+    name: "Тяга штанги в наклоне",
+    category: "Спина",
+    equipment: "штанга",
+    primary: ["Широчайшие", "Середина спины"],
+    secondary: ["Бицепс", "Задняя дельта", "Кор"],
+    steps: [
+      "Наклони корпус, сохраняя нейтральную спину и мягкие колени.",
+      "Держи гриф чуть ниже колен или у голеней.",
+      "Тяни гриф к низу живота, сводя лопатки.",
+      "Опускай гриф под контролем без округления спины."
+    ],
+    tips: ["Корпус почти неподвижен", "Тяни локтями назад", "Вес не должен ломать позицию спины"],
+    mistakes: ["подброс корпусом", "круглая поясница", "тяга к груди вместо живота"]
+  },
+  {
+    name: "Жим ногами",
+    category: "Ноги",
+    equipment: "тренажер",
+    primary: ["Квадрицепс", "Ягодицы"],
+    secondary: ["Задняя поверхность бедра", "Икры"],
+    steps: [
+      "Поставь стопы на платформу на ширине плеч.",
+      "Опускай платформу до комфортной глубины без отрыва таза.",
+      "Толкай платформу всей стопой, колени веди по линии носков.",
+      "Вверху не запирай колени жестко."
+    ],
+    tips: ["Поясница прижата", "Контролируй глубину", "Не своди колени внутрь"],
+    mistakes: ["отрыв таза", "полное запирание коленей", "слишком узкая постановка без контроля"]
+  },
+  {
+    name: "Румынская тяга",
+    category: "Ноги / задняя цепь",
+    equipment: "штанга / гантели",
+    primary: ["Задняя поверхность бедра", "Ягодицы"],
+    secondary: ["Спина", "Кор"],
+    steps: [
+      "Встань ровно, держи вес перед бедрами.",
+      "Отводи таз назад, слегка сгибая колени.",
+      "Опускай вес вдоль ног до растяжения задней поверхности бедра.",
+      "Вернись вверх за счет ягодиц и задней поверхности бедра."
+    ],
+    tips: ["Это движение тазом, не присед", "Спина нейтральная", "Гантели/гриф близко к ногам"],
+    mistakes: ["округление спины", "глубина через поясницу", "слишком согнутые колени"]
+  },
+  {
+    name: "Разгибание ног",
+    category: "Ноги",
+    equipment: "тренажер",
+    primary: ["Квадрицепс"],
+    secondary: [],
+    steps: [
+      "Отрегулируй валик над нижней частью голени.",
+      "Сядь плотно, держись за ручки.",
+      "Разогни ноги вверх до сильного сокращения квадрицепса.",
+      "Опускай вес медленно, не бросая плиту."
+    ],
+    tips: ["Пауза вверху 0.5–1 сек", "Не дергай корпусом", "Колени должны совпадать с осью тренажера"],
+    mistakes: ["рывок", "слишком большой вес", "неполная амплитуда"]
+  },
+  {
+    name: "Сгибание ног",
+    category: "Ноги",
+    equipment: "тренажер",
+    primary: ["Задняя поверхность бедра"],
+    secondary: ["Икры"],
+    steps: [
+      "Настрой валик чуть выше пяток.",
+      "Зафиксируй корпус и таз.",
+      "Согни ноги, подтягивая пятки к себе.",
+      "Медленно верни вес, сохраняя напряжение."
+    ],
+    tips: ["Не отрывай таз", "Работай без рывка", "Ощущай заднюю поверхность бедра"],
+    mistakes: ["подброс весом", "потеря таза", "короткая амплитуда"]
+  },
+  {
+    name: "Подъём на бицепс",
+    category: "Руки",
+    equipment: "гантели / штанга",
+    primary: ["Бицепс"],
+    secondary: ["Предплечья"],
+    steps: [
+      "Встань ровно, локти держи рядом с корпусом.",
+      "Поднимай вес, сгибая локти без раскачки корпуса.",
+      "Вверху сожми бицепс, не выводя локти далеко вперед.",
+      "Опускай вес медленно почти до полного выпрямления рук."
+    ],
+    tips: ["Локти стабильны", "Контроль вниз важнее веса", "Не помогай спиной"],
+    mistakes: ["раскачка", "локти гуляют", "слишком короткая амплитуда"]
+  },
+  {
+    name: "Французский жим",
+    category: "Руки",
+    equipment: "EZ-гриф / гантели",
+    primary: ["Трицепс"],
+    secondary: ["Плечи"],
+    steps: [
+      "Ляг или сядь, удерживая вес над головой/грудью.",
+      "Сохраняй плечи почти неподвижными.",
+      "Сгибай локти, опуская вес контролируемо.",
+      "Разгибай руки за счет трицепса, не разводя локти слишком широко."
+    ],
+    tips: ["Локти смотрят вперед", "Не работай через боль в локтях", "Движение плавное"],
+    mistakes: ["разъезжающиеся локти", "слишком большой вес", "рывки"]
+  },
+  {
+    name: "Выпады",
+    category: "Ноги",
+    equipment: "свой вес / гантели",
+    primary: ["Ягодицы", "Квадрицепс"],
+    secondary: ["Задняя поверхность бедра", "Кор"],
+    steps: [
+      "Сделай шаг вперед или назад и стабилизируй корпус.",
+      "Опускайся вниз, удерживая колено передней ноги по линии стопы.",
+      "Оттолкнись пяткой/серединой стопы и вернись в исходное положение.",
+      "Повтори на вторую ногу без потери равновесия."
+    ],
+    tips: ["Корпус высокий", "Длина шага влияет на акцент", "Начинай без веса, если шатает"],
+    mistakes: ["колено внутрь", "падение корпусом вперед", "удар коленом об пол"]
+  },
+  {
+    name: "Планка",
+    category: "Кор",
+    equipment: "свой вес",
+    primary: ["Кор"],
+    secondary: ["Ягодицы", "Плечи"],
+    steps: [
+      "Поставь локти под плечи, тело — в одну линию.",
+      "Подкрути таз слегка под себя и напряги ягодицы.",
+      "Дыши ровно, не задерживай дыхание.",
+      "Держи позицию до момента, пока техника не начинает ломаться."
+    ],
+    tips: ["Качество важнее времени", "Не провисай в пояснице", "Шея продолжает линию позвоночника"],
+    mistakes: ["таз слишком высоко", "провисание", "задержка дыхания"]
+  },
+  {
+    name: "Отжимания",
+    category: "Грудь",
+    equipment: "свой вес",
+    primary: ["Грудь", "Трицепс"],
+    secondary: ["Передняя дельта", "Кор"],
+    steps: [
+      "Поставь ладони чуть шире плеч, корпус держи прямым.",
+      "Опускайся, сохраняя локти примерно под углом 30–60° к корпусу.",
+      "Коснись грудью почти пола или опустись до контролируемой глубины.",
+      "Выжми себя вверх, не ломая линию корпуса."
+    ],
+    tips: ["Напряги пресс и ягодицы", "Можно начать с колен/опоры", "Лопатки двигаются естественно"],
+    mistakes: ["провисший таз", "локти строго в стороны", "полуамплитуда"]
+  },
+  {
+    name: "Жим стоя",
+    category: "Плечи",
+    equipment: "штанга / гантели",
+    primary: ["Плечи"],
+    secondary: ["Трицепс", "Кор", "Верх груди"],
+    steps: [
+      "Поставь стопы устойчиво, напряги пресс и ягодицы.",
+      "Начни с веса на уровне ключиц/плеч.",
+      "Выжимай вес вверх, проводя голову под гриф/между руками.",
+      "Опускай вес под контролем в исходную точку."
+    ],
+    tips: ["Не прогибайся в пояснице", "Путь веса почти вертикальный", "Не превращай в швунг, если цель — жим"],
+    mistakes: ["сильный прогиб", "вывод веса далеко вперед", "расслабленный корпус"]
+  },
+  {
+    name: "Махи в стороны",
+    category: "Плечи",
+    equipment: "гантели / блок",
+    primary: ["Средняя дельта"],
+    secondary: ["Трапеции"],
+    steps: [
+      "Возьми легкие гантели и слегка согни локти.",
+      "Поднимай руки в стороны до уровня плеч или чуть ниже.",
+      "Веди локти, а не кисти, корпус почти неподвижен.",
+      "Опускай медленно, сохраняя напряжение в дельтах."
+    ],
+    tips: ["Легкий вес — нормальный выбор", "Не пожимай плечами", "Контроль важнее высоты"],
+    mistakes: ["раскачка", "слишком тяжелые гантели", "подъем трапециями"]
+  },
+  {
+    name: "Горизонтальная тяга",
+    category: "Спина",
+    equipment: "блок / тренажер",
+    primary: ["Середина спины", "Широчайшие"],
+    secondary: ["Бицепс", "Задняя дельта"],
+    steps: [
+      "Сядь ровно, упри стопы и возьми рукоять.",
+      "Начни движение с лопаток, затем тяни локти назад.",
+      "Подтяни рукоять к животу, не заваливая корпус назад.",
+      "Вернись вперед под контролем, сохраняя спину нейтральной."
+    ],
+    tips: ["Пауза в сведении лопаток", "Тяни к животу", "Не раскачивайся"],
+    mistakes: ["рывок корпусом", "круглая спина", "плечи вперед в конце без контроля"]
+  },
+  {
+    name: "Гиперэкстензия",
+    category: "Спина / ягодицы",
+    equipment: "римский стул",
+    primary: ["Ягодицы", "Задняя поверхность бедра", "Разгибатели спины"],
+    secondary: ["Кор"],
+    steps: [
+      "Настрой подушку так, чтобы таз мог свободно сгибаться.",
+      "Опусти корпус вниз с нейтральной спиной.",
+      "Поднимайся до прямой линии тела, сжимая ягодицы.",
+      "Не переразгибай поясницу в верхней точке."
+    ],
+    tips: ["Движение через таз", "Верхняя точка — ровная линия", "Вес добавляй только после техники"],
+    mistakes: ["переразгибание", "круглая спина", "рывки"]
+  },
+  {
+    name: "Ягодичный мост",
+    category: "Ягодицы",
+    equipment: "свой вес / штанга",
+    primary: ["Ягодицы"],
+    secondary: ["Задняя поверхность бедра", "Кор"],
+    steps: [
+      "Ляг или обопрись верхом спины на скамью, стопы поставь устойчиво.",
+      "Подкрути таз и напряги пресс.",
+      "Поднимай таз за счет ягодиц до прямой линии корпуса.",
+      "Опускайся медленно, не теряя контроля таза."
+    ],
+    tips: ["Пауза вверху", "Не прогибай поясницу", "Стопы не слишком далеко"],
+    mistakes: ["движение поясницей", "колени внутрь", "слишком быстрая амплитуда"]
+  },
+  {
+    name: "Болгарские выпады",
+    category: "Ноги",
+    equipment: "скамья / гантели",
+    primary: ["Ягодицы", "Квадрицепс"],
+    secondary: ["Задняя поверхность бедра", "Кор"],
+    steps: [
+      "Поставь заднюю ногу на скамью, передняя стопа устойчиво на полу.",
+      "Опускайся вниз, сохраняя корпус собранным.",
+      "Колено передней ноги веди по линии стопы.",
+      "Поднимайся через переднюю ногу, не отталкиваясь задней."
+    ],
+    tips: ["Сначала найди удобную дистанцию", "Можно держаться за опору", "Контролируй равновесие"],
+    mistakes: ["слишком короткий шаг", "завал колена", "прыжок вверх вместо контроля"]
+  },
+  {
+    name: "Подъёмы на носки",
+    category: "Икры",
+    equipment: "тренажер / гантели",
+    primary: ["Икры"],
+    secondary: [],
+    steps: [
+      "Поставь носки на платформу или пол, пятки свободны.",
+      "Опустись до растяжения икр.",
+      "Поднимись максимально высоко на носки.",
+      "Задержись вверху и медленно опустись."
+    ],
+    tips: ["Работай в полной амплитуде", "Не пружинь", "Колени под контролем"],
+    mistakes: ["короткая амплитуда", "подскоки", "слишком быстрый темп"]
+  },
+  {
+    name: "Скручивания",
+    category: "Пресс",
+    equipment: "коврик",
+    primary: ["Пресс"],
+    secondary: ["Кор"],
+    steps: [
+      "Ляг на спину, согни ноги и зафиксируй поясницу комфортно.",
+      "Поднимай верх спины, как будто ребра идут к тазу.",
+      "Не тяни шею руками.",
+      "Опускайся медленно, сохраняя напряжение пресса."
+    ],
+    tips: ["Маленькая амплитуда — нормально", "Выдох на подъеме", "Шея расслаблена"],
+    mistakes: ["рывок шеей", "подъем всем корпусом", "потеря напряжения"]
+  },
+  {
+    name: "Подъём ног",
+    category: "Пресс",
+    equipment: "турник / брусья / коврик",
+    primary: ["Пресс"],
+    secondary: ["Сгибатели бедра", "Кор"],
+    steps: [
+      "Зафиксируй корпус, не раскачивайся.",
+      "Поднимай ноги или колени вверх, подкручивая таз.",
+      "В верхней точке напряги пресс.",
+      "Опускай ноги медленно, не бросая их вниз."
+    ],
+    tips: ["Начни с согнутых коленей", "Главное — подкрутка таза", "Не раскачивайся"],
+    mistakes: ["махи ногами", "работа только сгибателями бедра", "провисание в плечах"]
+  },
+  {
+    name: "Тяга гантели одной рукой",
+    category: "Спина",
+    equipment: "гантель / скамья",
+    primary: ["Широчайшие", "Середина спины"],
+    secondary: ["Бицепс", "Задняя дельта"],
+    steps: [
+      "Упрись рукой и коленом в скамью или займи устойчивую позицию.",
+      "Держи спину нейтральной, плечо рабочей руки слегка вниз.",
+      "Тяни локоть назад к тазу.",
+      "Опускай гантель под контролем, не разворачивая корпус."
+    ],
+    tips: ["Локоть идет к бедру", "Не крути корпусом", "Пауза в верхней точке"],
+    mistakes: ["рывок", "разворот корпуса", "тяга к плечу"]
+  },
+  {
+    name: "Face pull",
+    category: "Плечи / осанка",
+    equipment: "канат / блок",
+    primary: ["Задняя дельта", "Середина спины"],
+    secondary: ["Трапеции", "Вращатели плеча"],
+    steps: [
+      "Поставь блок примерно на уровень лица и возьми канат.",
+      "Отойди назад, руки вытянуты, корпус устойчив.",
+      "Тяни канат к лицу, разводя концы в стороны.",
+      "Вернись под контролем, не теряя положения плеч."
+    ],
+    tips: ["Легкий/средний вес", "Локти высоко, но без боли", "Думай о задней дельте"],
+    mistakes: ["рывок поясницей", "слишком большой вес", "плечи к ушам"]
+  }
 ];
+
+const strengthExercises = exerciseLibrary.map((exercise) => exercise.name);
+
 
 const cardioProfiles = {
   "Беговая дорожка": {
@@ -325,6 +719,16 @@ function getIntensity(profile, intensityId) {
   return profile.intensities.find((item) => item.id === intensityId) || profile.intensities[0];
 }
 
+function getExerciseInfo(name) {
+  const normalizedName = normalize(name);
+  return exerciseLibrary.find((exercise) => normalize(exercise.name) === normalizedName) || null;
+}
+
+function formatMuscles(primary = [], secondary = []) {
+  const all = [...primary, ...secondary];
+  return all.length ? all.join(", ") : "нет данных";
+}
+
 function calculateExerciseCalories({ met, weightKg, minutes }) {
   const numericMet = numeric(met);
   const numericWeight = numeric(weightKg);
@@ -439,9 +843,11 @@ function App() {
   const [weightForm, setWeightForm] = useState({ date: todayISO(), weightKg: "" });
   const [scanner, setScanner] = useState({ active: false, message: "", product: null });
   const [restTimer, setRestTimer] = useState({ seconds: 90, left: 90, running: false });
+  const [exerciseInfoName, setExerciseInfoName] = useState("");
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   const scanFrameRef = useRef(null);
+  const zxingControlsRef = useRef(null);
 
   useEffect(() => {
     try {
@@ -500,6 +906,7 @@ function App() {
   const resolvedCardioName = workoutForm.type === "cardio" ? resolveCardioName(workoutForm.name) || workoutForm.name : null;
   const activeCardioProfile = workoutForm.type === "cardio" ? getCardioProfile(workoutForm.name) || cardioProfiles["Беговая дорожка"] : null;
   const selectedIntensity = getIntensity(activeCardioProfile, workoutForm.intensityId);
+  const selectedExerciseInfo = workoutForm.type === "strength" ? getExerciseInfo(workoutForm.name) : null;
   const estimatedWorkoutCalories = calculateExerciseCalories({
     met: selectedIntensity?.met,
     weightKg: profile.weightKg,
@@ -894,54 +1301,87 @@ function App() {
   function stopScanner() {
     if (scanFrameRef.current) cancelAnimationFrame(scanFrameRef.current);
     scanFrameRef.current = null;
+    if (zxingControlsRef.current) {
+      try { zxingControlsRef.current.stop?.(); } catch (error) { console.error(error); }
+      zxingControlsRef.current = null;
+    }
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
     }
+    if (videoRef.current) videoRef.current.srcObject = null;
     setScanner((current) => ({ ...current, active: false }));
+  }
+
+  async function startNativeBarcodeScanner() {
+    const detector = new window.BarcodeDetector({ formats: ["ean_13", "ean_8", "upc_a", "upc_e"] });
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+    streamRef.current = stream;
+    setScanner({ active: true, message: "Наведи камеру на штрихкод упаковки", product: null, engine: "native" });
+
+    setTimeout(() => {
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play();
+      }
+    }, 0);
+
+    const scan = async () => {
+      if (!videoRef.current || !streamRef.current) return;
+      try {
+        const codes = await detector.detect(videoRef.current);
+        if (codes.length > 0) {
+          const code = codes[0].rawValue;
+          stopScanner();
+          setScanner({ active: false, message: `Штрихкод найден: ${code}. Ищу продукт...`, product: { code }, engine: "native" });
+          await fetchOpenFoodFactsProduct(code);
+          return;
+        }
+      } catch (error) {
+        console.error(error);
+      }
+      scanFrameRef.current = requestAnimationFrame(scan);
+    };
+
+    scanFrameRef.current = requestAnimationFrame(scan);
+  }
+
+  async function startZxingScanner() {
+    setScanner({ active: true, message: "Safari/Firefox: включаю совместимый сканер ZXing...", product: null, engine: "zxing" });
+
+    setTimeout(async () => {
+      try {
+        const zxing = await import(/* @vite-ignore */ "https://cdn.jsdelivr.net/npm/@zxing/browser@latest/+esm");
+        const reader = new zxing.BrowserMultiFormatReader();
+        const controls = await reader.decodeFromVideoDevice(undefined, videoRef.current, async (result, error, callbackControls) => {
+          if (!result) return;
+          const code = typeof result.getText === "function" ? result.getText() : String(result.text || result);
+          try { callbackControls?.stop?.(); } catch (stopError) { console.error(stopError); }
+          zxingControlsRef.current = null;
+          setScanner({ active: false, message: `Штрихкод найден: ${code}. Ищу продукт...`, product: { code }, engine: "zxing" });
+          await fetchOpenFoodFactsProduct(code);
+        });
+        zxingControlsRef.current = controls;
+        setScanner({ active: true, message: "Наведи камеру на штрихкод упаковки. Работает через ZXing fallback.", product: null, engine: "zxing" });
+      } catch (error) {
+        stopScanner();
+        setScanner({ active: false, message: error.message || "Не удалось запустить совместимый сканер. Введи штрихкод вручную.", product: null, engine: "zxing" });
+      }
+    }, 0);
   }
 
   async function startScanner() {
     try {
-      if (!("BarcodeDetector" in window)) {
-        setScanner({ active: false, message: "Этот браузер не поддерживает BarcodeDetector. Можно ввести продукт вручную.", product: null });
-        return;
-      }
       if (!navigator.mediaDevices?.getUserMedia) {
-        setScanner({ active: false, message: "Камера недоступна в этом браузере.", product: null });
+        setScanner({ active: false, message: "Камера недоступна в этом браузере. Можно ввести штрихкод вручную.", product: null });
         return;
       }
 
-      const detector = new window.BarcodeDetector({ formats: ["ean_13", "ean_8", "upc_a", "upc_e"] });
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-      streamRef.current = stream;
-      setScanner({ active: true, message: "Наведи камеру на штрихкод упаковки", product: null });
-
-      setTimeout(() => {
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          videoRef.current.play();
-        }
-      }, 0);
-
-      const scan = async () => {
-        if (!videoRef.current || !streamRef.current) return;
-        try {
-          const codes = await detector.detect(videoRef.current);
-          if (codes.length > 0) {
-            const code = codes[0].rawValue;
-            stopScanner();
-            setScanner({ active: false, message: `Штрихкод найден: ${code}. Ищу продукт...`, product: { code } });
-            await fetchOpenFoodFactsProduct(code);
-            return;
-          }
-        } catch (error) {
-          console.error(error);
-        }
-        scanFrameRef.current = requestAnimationFrame(scan);
-      };
-
-      scanFrameRef.current = requestAnimationFrame(scan);
+      if ("BarcodeDetector" in window) {
+        await startNativeBarcodeScanner();
+      } else {
+        await startZxingScanner();
+      }
     } catch (error) {
       stopScanner();
       setScanner({ active: false, message: error.message || "Не удалось открыть камеру", product: null });
@@ -1061,10 +1501,22 @@ function App() {
                     </div>
                   </div>
                 ) : (
-                  <div className="grid-3">
-                    <NumberField label="Подходы" value={workoutForm.sets} onChange={(value) => setWorkoutField("sets", value)} />
-                    <NumberField label="Повторы" value={workoutForm.reps} onChange={(value) => setWorkoutField("reps", value)} />
-                    <NumberField label="Вес, кг" value={workoutForm.weight} onChange={(value) => setWorkoutField("weight", value)} placeholder="0" />
+                  <div className="stack">
+                    {selectedExerciseInfo && (
+                      <div className="exercise-help-strip">
+                        <MuscleMiniMap primary={selectedExerciseInfo.primary} secondary={selectedExerciseInfo.secondary} />
+                        <div>
+                          <strong>{selectedExerciseInfo.category}</strong>
+                          <p>{formatMuscles(selectedExerciseInfo.primary, selectedExerciseInfo.secondary)}</p>
+                        </div>
+                        <button type="button" onClick={() => setExerciseInfoName(selectedExerciseInfo.name)}><Info size={16} /> Как делать</button>
+                      </div>
+                    )}
+                    <div className="grid-3">
+                      <NumberField label="Подходы" value={workoutForm.sets} onChange={(value) => setWorkoutField("sets", value)} />
+                      <NumberField label="Повторы" value={workoutForm.reps} onChange={(value) => setWorkoutField("reps", value)} />
+                      <NumberField label="Вес, кг" value={workoutForm.weight} onChange={(value) => setWorkoutField("weight", value)} placeholder="0" />
+                    </div>
                   </div>
                 )}
 
@@ -1076,7 +1528,7 @@ function App() {
                 <button className="primary-button" type="submit"><Plus size={19} /> Добавить</button>
               </form>
 
-              <WorkoutList selectedDate={selectedDate} dateEntries={dateEntries} deleteWorkoutEntry={deleteWorkoutEntry} startRestTimer={startRestTimer} />
+              <WorkoutList selectedDate={selectedDate} dateEntries={dateEntries} deleteWorkoutEntry={deleteWorkoutEntry} startRestTimer={startRestTimer} openExerciseInfo={setExerciseInfoName} />
             </section>
           )}
 
@@ -1101,6 +1553,7 @@ function App() {
               videoRef={videoRef}
               startScanner={startScanner}
               stopScanner={stopScanner}
+              lookupBarcode={fetchOpenFoodFactsProduct}
               addSampleMenu={addSampleMenu}
               copyYesterdayNutrition={copyYesterdayNutrition}
               saveDayAsMenu={saveDayAsMenu}
@@ -1122,6 +1575,7 @@ function App() {
               sortedHistoryDates={sortedHistoryDates}
               groupedHistory={groupedHistory}
               deleteWorkoutEntry={deleteWorkoutEntry}
+              openExerciseInfo={setExerciseInfoName}
             />
           )}
 
@@ -1148,6 +1602,10 @@ function App() {
           <BottomNavButton active={tab === "progress"} onClick={() => setTab("progress")} icon={BarChart3} label="Прогресс" />
           <BottomNavButton active={tab === "profile"} onClick={() => setTab("profile")} icon={UserRound} label="Профиль" />
         </nav>
+
+        {exerciseInfoName && (
+          <ExerciseInfoModal name={exerciseInfoName} onClose={() => setExerciseInfoName("")} />
+        )}
       </div>
     </div>
   );
@@ -1178,7 +1636,7 @@ function DashboardScreen({ selectedDate, setSelectedDate, profile, nutritionPlan
 
       <div className="dashboard-grid">
         <SummaryTile icon={Utensils} label="Осталось" value={`${Math.round(caloriesLeft)} ккал`} detail={`съедено ${Math.round(dayNutrition.totals.calories)}`} tone={caloriesLeft >= 0 ? "good" : "warn"} />
-        <SummaryTile icon={Dumbbell} label="Тренировка" value={`${dateEntries.length} записей`} detail={`${dayWorkoutSummary.minutes} мин кардио`} />
+        <SummaryTile icon={Dumbbell} label="Треня" value={`${dateEntries.length} записей`} detail={`${dayWorkoutSummary.minutes} мин кардио`} />
         <SummaryTile icon={Flame} label="Сожжено" value={`${dayWorkoutSummary.cardioCalories} ккал`} detail="по кардио" tone="hot" />
         <SummaryTile icon={Target} label="Вес" value={`${latestWeight || "—"} кг`} detail={weightDelta ? `до цели ${weightDelta > 0 ? "+" : ""}${weightDelta} кг` : "цель задана"} />
       </div>
@@ -1201,7 +1659,7 @@ function DashboardScreen({ selectedDate, setSelectedDate, profile, nutritionPlan
 
       <div className="grid-2 dashboard-panels">
         <div className="card stack small-gap">
-          <div className="section-head inline"><h2>Тренировка</h2><button className="tiny-link" onClick={() => setTab("training")}>Открыть</button></div>
+          <div className="section-head inline"><h2>Треня</h2><button className="tiny-link" onClick={() => setTab("training")}>Открыть</button></div>
           {dateEntries.length ? dateEntries.slice(0, 3).map((entry) => <MiniWorkoutRow key={entry.id} entry={entry} />) : <p className="hint">Пока нет упражнений за день.</p>}
         </div>
         <div className="card stack small-gap">
@@ -1220,28 +1678,43 @@ function DashboardScreen({ selectedDate, setSelectedDate, profile, nutritionPlan
 function RestTimerCard({ restTimer, setRestTimer, startRestTimer, pauseRestTimer, resetRestTimer }) {
   const minutes = Math.floor(restTimer.left / 60);
   const seconds = restTimer.left % 60;
-  const percent = restTimer.seconds ? Math.max(0, Math.min(100, Math.round((restTimer.left / restTimer.seconds) * 100))) : 0;
+  const progress = restTimer.seconds ? Math.max(0, Math.min(1, restTimer.left / restTimer.seconds)) : 0;
+  const radius = 62;
+  const circumference = 2 * Math.PI * radius;
+  const dashOffset = circumference * (1 - progress);
 
   return (
     <div className="card rest-card">
       <div className="section-head">
         <div>
           <h2>Таймер отдыха</h2>
-          <p>Запускай после подхода, чтобы не передерживать паузу</p>
+          <p>Круговой циферблат показывает, сколько паузы осталось</p>
         </div>
         <Timer className="muted-icon" />
       </div>
-      <div className="timer-face">
-        <strong>{minutes}:{String(seconds).padStart(2, "0")}</strong>
-        <span>осталось</span>
-        <div className="timer-bar"><i style={{ width: `${percent}%` }} /></div>
+      <div className="timer-dial" aria-label="Таймер отдыха">
+        <svg viewBox="0 0 160 160">
+          <circle className="timer-track" cx="80" cy="80" r={radius} />
+          <circle
+            className="timer-progress"
+            cx="80"
+            cy="80"
+            r={radius}
+            strokeDasharray={circumference}
+            strokeDashoffset={dashOffset}
+          />
+        </svg>
+        <div className="timer-dial-center">
+          <strong>{minutes}:{String(seconds).padStart(2, "0")}</strong>
+          <span>{restTimer.running ? "идёт отдых" : restTimer.left === 0 ? "готово" : "готов"}</span>
+        </div>
       </div>
       <div className="timer-presets">
         {[60, 90, 120, 180].map((secondsValue) => (
           <button key={secondsValue} type="button" className={restTimer.seconds === secondsValue ? "active" : ""} onClick={() => setRestTimer({ seconds: secondsValue, left: secondsValue, running: false })}>{secondsValue / 60}м</button>
         ))}
       </div>
-      <div className="grid-3">
+      <div className="grid-3 timer-controls">
         <button type="button" className="secondary-button" onClick={() => startRestTimer(restTimer.seconds)}><Play size={18} /> Старт</button>
         <button type="button" className="secondary-button" onClick={pauseRestTimer}><Pause size={18} /> Пауза</button>
         <button type="button" className="secondary-button" onClick={resetRestTimer}><RotateCcw size={18} /> Сброс</button>
@@ -1250,7 +1723,7 @@ function RestTimerCard({ restTimer, setRestTimer, startRestTimer, pauseRestTimer
   );
 }
 
-function WorkoutList({ selectedDate, dateEntries, deleteWorkoutEntry, startRestTimer }) {
+function WorkoutList({ selectedDate, dateEntries, deleteWorkoutEntry, startRestTimer, openExerciseInfo }) {
   return (
     <section className="stack">
       <div className="section-head inline">
@@ -1261,7 +1734,7 @@ function WorkoutList({ selectedDate, dateEntries, deleteWorkoutEntry, startRestT
         <EmptyState text="За этот день пока нет упражнений." />
       ) : (
         <div className="stack small-gap">
-          {dateEntries.map((entry) => <ExerciseCard key={entry.id} entry={entry} onDelete={() => deleteWorkoutEntry(entry.id)} onRest={() => startRestTimer(90)} />)}
+          {dateEntries.map((entry) => <ExerciseCard key={entry.id} entry={entry} onDelete={() => deleteWorkoutEntry(entry.id)} onRest={() => startRestTimer(90)} onInfo={openExerciseInfo} />)}
         </div>
       )}
     </section>
@@ -1288,6 +1761,7 @@ function NutritionScreen({
   videoRef,
   startScanner,
   stopScanner,
+  lookupBarcode,
   addSampleMenu,
   copyYesterdayNutrition,
   saveDayAsMenu,
@@ -1296,6 +1770,19 @@ function NutritionScreen({
   deleteSavedMenu,
   deleteNutritionEntry,
 }) {
+  const [manualBarcode, setManualBarcode] = useState("");
+
+  async function submitManualBarcode() {
+    const code = manualBarcode.trim();
+    if (!code) return;
+    try {
+      await lookupBarcode(code);
+      setManualBarcode("");
+    } catch (error) {
+      console.error(error);
+    }
+  }
+
   return (
     <section className="screen stack">
       <DateCard selectedDate={selectedDate} setSelectedDate={setSelectedDate} />
@@ -1421,8 +1908,12 @@ function NutritionScreen({
         <button type="button" className="secondary-button" onClick={scanner.active ? stopScanner : startScanner}>
           <Camera size={18} /> {scanner.active ? "Остановить" : "Сканировать"}
         </button>
+        <div className="manual-barcode-row">
+          <input value={manualBarcode} onChange={(event) => setManualBarcode(event.target.value)} inputMode="numeric" placeholder="Или введи штрихкод вручную" />
+          <button type="button" className="tiny-link" onClick={submitManualBarcode}>Найти</button>
+        </div>
         {scanner.message && <p className="hint">{scanner.message}</p>}
-        <p className="hint">Камера работает только на HTTPS или localhost. По фото тарелки точность ограничена: без веса порции приложение не знает реальное количество граммов.</p>
+        <p className="hint">В Safari используется fallback через ZXing. Камера работает только на HTTPS или localhost. По фото тарелки точность ограничена: без веса порции приложение не знает реальное количество граммов.</p>
       </div>
 
       <section className="stack">
@@ -1443,7 +1934,7 @@ function NutritionScreen({
   );
 }
 
-function ProgressScreen({ query, setQuery, progressNames, progressExercise, setProgressExercise, selectedProgressEntries, sortedHistoryDates, groupedHistory, deleteWorkoutEntry }) {
+function ProgressScreen({ query, setQuery, progressNames, progressExercise, setProgressExercise, selectedProgressEntries, sortedHistoryDates, groupedHistory, deleteWorkoutEntry, openExerciseInfo }) {
   const bestWeight = Math.max(0, ...selectedProgressEntries.filter((entry) => entry.type !== "cardio").map((entry) => numeric(entry.weight)));
   const bestVolume = Math.max(0, ...selectedProgressEntries.map((entry) => volume(entry)));
   const totalCardio = selectedProgressEntries.filter((entry) => entry.type === "cardio").reduce((sum, entry) => sum + numeric(entry.calories), 0);
@@ -1485,7 +1976,7 @@ function ProgressScreen({ query, setQuery, progressNames, progressExercise, setP
             <h2 className="date-title">{formatDate(date)}</h2>
             {groupedHistory[date]
               .sort((a, b) => b.createdAt - a.createdAt)
-              .map((entry) => <ExerciseCard key={entry.id} entry={entry} onDelete={() => deleteWorkoutEntry(entry.id)} compact />)}
+              .map((entry) => <ExerciseCard key={entry.id} entry={entry} onDelete={() => deleteWorkoutEntry(entry.id)} compact onInfo={openExerciseInfo} />)}
           </section>
         ))
       )}
@@ -1599,6 +2090,87 @@ function ProfileScreen({ profile, updateProfile, nutritionPlan, bmi, trend, weig
   );
 }
 
+function muscleClass(targets, primary = [], secondary = []) {
+  const normalizedTargets = targets.map(normalize);
+  const primaryHit = primary.some((muscle) => normalizedTargets.some((target) => normalize(muscle).includes(target) || target.includes(normalize(muscle))));
+  if (primaryHit) return "muscle-part primary";
+  const secondaryHit = secondary.some((muscle) => normalizedTargets.some((target) => normalize(muscle).includes(target) || target.includes(normalize(muscle))));
+  return secondaryHit ? "muscle-part secondary" : "muscle-part neutral";
+}
+
+function MuscleMiniMap({ primary = [], secondary = [] }) {
+  return (
+    <svg className="muscle-mini-map" viewBox="0 0 96 112" role="img" aria-label="Карта мышц">
+      <circle className="muscle-outline" cx="48" cy="13" r="8" />
+      <path className={muscleClass(["грудь", "широчайшие", "середина спины", "спина"], primary, secondary)} d="M34 27h28l6 29-10 15H38L28 56z" />
+      <path className={muscleClass(["плечи", "дельта", "передняя дельта", "средняя дельта", "задняя дельта"], primary, secondary)} d="M27 30l-9 15 9 8 7-24zM69 30l9 15-9 8-7-24z" />
+      <path className={muscleClass(["бицепс", "трицепс", "предплечья", "руки"], primary, secondary)} d="M17 46l-7 28 10 3 9-25zM79 46l7 28-10 3-9-25z" />
+      <path className={muscleClass(["пресс", "кор"], primary, secondary)} d="M39 55h18l4 20H35z" />
+      <path className={muscleClass(["ягодицы", "задняя поверхность бедра"], primary, secondary)} d="M36 75h24l-4 13H40z" />
+      <path className={muscleClass(["квадрицепс", "ноги", "задняя поверхность бедра"], primary, secondary)} d="M35 87l-4 24h13l4-24zM61 87l4 24H52l-4-24z" />
+      <path className={muscleClass(["икры"], primary, secondary)} d="M30 109h14v3H28zM52 109h14l2 3H52z" />
+    </svg>
+  );
+}
+
+function MuscleDiagram({ primary = [], secondary = [] }) {
+  return (
+    <div className="muscle-diagram-wrap">
+      <MuscleMiniMap primary={primary} secondary={secondary} />
+      <div className="muscle-legend">
+        <span><i className="legend-dot primary" /> основная нагрузка</span>
+        <span><i className="legend-dot secondary" /> вспомогательно</span>
+      </div>
+    </div>
+  );
+}
+
+function ExerciseInfoModal({ name, onClose }) {
+  const info = getExerciseInfo(name);
+  if (!info) return null;
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="exercise-modal" onClick={(event) => event.stopPropagation()}>
+        <div className="modal-head">
+          <div>
+            <p className="eyebrow">Техника упражнения</p>
+            <h2>{info.name}</h2>
+            <p>{info.category} · {info.equipment}</p>
+          </div>
+          <button type="button" className="icon-button" onClick={onClose} aria-label="Закрыть"><X size={18} /></button>
+        </div>
+
+        <MuscleDiagram primary={info.primary} secondary={info.secondary} />
+
+        <div className="muscle-chip-row">
+          {info.primary.map((muscle) => <span key={`p-${muscle}`} className="muscle-chip primary">{muscle}</span>)}
+          {info.secondary.map((muscle) => <span key={`s-${muscle}`} className="muscle-chip secondary">{muscle}</span>)}
+        </div>
+
+        <div className="instruction-block">
+          <h3>Как выполнять</h3>
+          <ol>
+            {info.steps.map((step) => <li key={step}>{step}</li>)}
+          </ol>
+        </div>
+
+        <div className="instruction-grid">
+          <div className="instruction-block compact">
+            <h3>Полезно помнить</h3>
+            <ul>{info.tips.map((tip) => <li key={tip}>{tip}</li>)}</ul>
+          </div>
+          <div className="instruction-block compact warning">
+            <h3>Частые ошибки</h3>
+            <ul>{info.mistakes.map((mistake) => <li key={mistake}>{mistake}</li>)}</ul>
+          </div>
+        </div>
+
+        <p className="hint">Подсказки не заменяют работу с тренером. Если появляется боль в суставе или спине — уменьши нагрузку и проверь технику.</p>
+      </div>
+    </div>
+  );
+}
+
 function BottomNavButton({ active, onClick, icon: Icon, label }) {
   return <button onClick={onClick} className={`bottom-tab ${active ? "active" : ""}`}><Icon size={19} /><span>{label}</span></button>;
 }
@@ -1630,9 +2202,10 @@ function ReadOnlyMetric({ label, value }) {
   );
 }
 
-function ExerciseCard({ entry, onDelete, onRest, compact = false }) {
+function ExerciseCard({ entry, onDelete, onRest, onInfo, compact = false }) {
   const isCardio = entry.type === "cardio";
   const currentVolume = volume(entry);
+  const exerciseInfo = !isCardio ? getExerciseInfo(entry.name) : null;
   return (
     <article className="exercise-card">
       <div className="card-top">
@@ -1660,8 +2233,19 @@ function ExerciseCard({ entry, onDelete, onRest, compact = false }) {
       )}
 
       {isCardio && entry.intensityLabel && <p className="hint tight">{entry.intensityLabel}</p>}
+      {!isCardio && exerciseInfo && (
+        <div className="muscle-summary">
+          <MuscleMiniMap primary={exerciseInfo.primary} secondary={exerciseInfo.secondary} />
+          <p><strong>{exerciseInfo.primary.join(", ")}</strong>{exerciseInfo.secondary.length ? ` · также: ${exerciseInfo.secondary.join(", ")}` : ""}</p>
+        </div>
+      )}
       {!isCardio && currentVolume > 0 && <p className="volume-line">Объём: <strong>{currentVolume.toLocaleString("ru-RU")} кг</strong></p>}
-      {!isCardio && onRest && <button type="button" className="rest-mini-button" onClick={onRest}><Timer size={15} /> Отдых 90с</button>}
+      {!isCardio && (
+        <div className="exercise-actions">
+          {onRest && <button type="button" className="rest-mini-button" onClick={onRest}><Timer size={15} /> Отдых 90с</button>}
+          {exerciseInfo && onInfo && <button type="button" className="info-mini-button" onClick={() => onInfo(entry.name)}><Info size={15} /> Как делать</button>}
+        </div>
+      )}
     </article>
   );
 }
