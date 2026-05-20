@@ -49,7 +49,7 @@ const FAVORITE_FOODS_KEY = "mobile-workout-tracker-favorite-foods-v1";
 const SAVED_MENUS_KEY = "mobile-workout-tracker-saved-menus-v1";
 const SCANNED_FOODS_KEY = "mobile-workout-tracker-scanned-foods-v1";
 const CLOUD_TABLE = "app_state";
-const APP_STATE_VERSION = 7;
+const APP_STATE_VERSION = 8;
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "";
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
 const supabase = SUPABASE_URL && SUPABASE_ANON_KEY ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
@@ -643,13 +643,13 @@ const workoutTemplates = [
 
 const defaultProfile = {
   name: "",
-  sex: "female",
-  age: "25",
-  heightCm: "170",
-  weightKg: "70",
-  targetWeightKg: "65",
-  activityLevel: "1.55",
-  weeklyChangeKg: "0.4",
+  sex: "",
+  age: "",
+  heightCm: "",
+  weightKg: "",
+  targetWeightKg: "",
+  activityLevel: "",
+  weeklyChangeKg: "",
 };
 
 function normalize(value) {
@@ -670,11 +670,7 @@ function shiftDateISO(dateString, days) {
 }
 
 function formatDate(dateString) {
-  return new Intl.DateTimeFormat("ru-RU", {
-    day: "numeric",
-    month: "long",
-    weekday: "short",
-  }).format(new Date(dateString + "T12:00:00"));
+  return formatShortDate(dateString);
 }
 
 function formatShortDate(dateString) {
@@ -907,13 +903,18 @@ function calculateBmr(profile) {
 }
 
 function calculateNutritionPlan(profile) {
-  const weight = numeric(profile.weightKg, 70);
+  const weight = numeric(profile.weightKg);
   const targetWeight = numeric(profile.targetWeightKg, weight);
-  const weeklyChange = Math.abs(numeric(profile.weeklyChangeKg, 0.4));
+  const weeklyChange = Math.abs(numeric(profile.weeklyChangeKg));
   const bmr = calculateBmr(profile);
-  const tdee = Math.round(bmr * numeric(profile.activityLevel, 1.55));
+  const activity = numeric(profile.activityLevel);
+  if (!weight || !bmr || !activity) {
+    return { bmr: 0, tdee: 0, targetCalories: 0, dailyAdjustment: 0, protein: 0, fat: 0, carbs: 0, direction: 0 };
+  }
+
+  const tdee = Math.round(bmr * activity);
   const direction = targetWeight < weight ? -1 : targetWeight > weight ? 1 : 0;
-  const dailyAdjustment = direction * Math.round((weeklyChange * 7700) / 7);
+  const dailyAdjustment = direction && weeklyChange ? direction * Math.round((weeklyChange * 7700) / 7) : 0;
   const targetCalories = Math.max(1200, Math.round(tdee + dailyAdjustment));
 
   const proteinPerKg = direction < 0 ? 1.6 : direction > 0 ? 1.8 : 1.4;
@@ -991,6 +992,8 @@ function App() {
   const zxingControlsRef = useRef(null);
   const hasLocalDataRef = useRef(false);
   const skipCloudSaveRef = useRef(false);
+  const remoteApplyTimerRef = useRef(null);
+  const lastCloudUpdatedAtRef = useRef("");
   const appStateRef = useRef(null);
 
   appStateRef.current = createAppState({ entries, profile, weightLog, nutritionEntries, favoriteFoods, savedMenus, scannedFoods });
@@ -1083,10 +1086,13 @@ function App() {
           ? mergeAppStates(data.state, localState, hasLocalDataRef.current)
           : localState;
 
+        if (data?.updated_at) lastCloudUpdatedAtRef.current = data.updated_at;
         skipCloudSaveRef.current = true;
         applyAppState(nextState);
-        window.setTimeout(() => { skipCloudSaveRef.current = false; }, 0);
-        await saveCloudState(session.user.id, nextState);
+        window.clearTimeout(remoteApplyTimerRef.current);
+        remoteApplyTimerRef.current = window.setTimeout(() => { skipCloudSaveRef.current = false; }, 500);
+        const savedRow = await saveCloudState(session.user.id, nextState);
+        if (savedRow?.updated_at) lastCloudUpdatedAtRef.current = savedRow.updated_at;
 
         if (!cancelled) {
           setCloudLoaded(true);
@@ -1110,7 +1116,8 @@ function App() {
     const timeout = window.setTimeout(async () => {
       try {
         setCloudStatus("Сохраняю изменения...");
-        await saveCloudState(session.user.id, appStateRef.current);
+        const savedRow = await saveCloudState(session.user.id, appStateRef.current);
+        if (savedRow?.updated_at) lastCloudUpdatedAtRef.current = savedRow.updated_at;
         setCloudStatus("Сохранено в облаке");
       } catch (error) {
         setCloudStatus(`Ошибка сохранения: ${error.message}`);
@@ -1119,6 +1126,76 @@ function App() {
 
     return () => window.clearTimeout(timeout);
   }, [session?.user?.id, cloudLoaded, entries, profile, weightLog, nutritionEntries, favoriteFoods, savedMenus, scannedFoods]);
+
+  useEffect(() => {
+    if (!supabase || !session?.user?.id || !cloudLoaded) return undefined;
+
+    const channel = supabase
+      .channel(`app-state-realtime-${session.user.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: CLOUD_TABLE,
+          filter: `user_id=eq.${session.user.id}`,
+        },
+        (payload) => {
+          const row = payload.new;
+          if (!row?.state) return;
+
+          const remoteUpdatedAt = row.updated_at || "";
+          if (remoteUpdatedAt && lastCloudUpdatedAtRef.current) {
+            const remoteTime = new Date(remoteUpdatedAt).getTime();
+            const knownTime = new Date(lastCloudUpdatedAtRef.current).getTime();
+            if (Number.isFinite(remoteTime) && Number.isFinite(knownTime) && remoteTime <= knownTime) return;
+          }
+
+          if (remoteUpdatedAt) lastCloudUpdatedAtRef.current = remoteUpdatedAt;
+          skipCloudSaveRef.current = true;
+          applyAppState(row.state);
+          setCloudStatus("Обновлено с другого устройства");
+          window.clearTimeout(remoteApplyTimerRef.current);
+          remoteApplyTimerRef.current = window.setTimeout(() => {
+            skipCloudSaveRef.current = false;
+          }, 700);
+        }
+      )
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") setCloudStatus("Автообновление включено");
+      });
+
+    const refreshOnFocus = async () => {
+      if (document.hidden) return;
+      try {
+        const { data, error } = await supabase
+          .from(CLOUD_TABLE)
+          .select("state, updated_at")
+          .eq("user_id", session.user.id)
+          .maybeSingle();
+        if (error || !data?.state) return;
+        if (data.updated_at && lastCloudUpdatedAtRef.current) {
+          const remoteTime = new Date(data.updated_at).getTime();
+          const knownTime = new Date(lastCloudUpdatedAtRef.current).getTime();
+          if (Number.isFinite(remoteTime) && Number.isFinite(knownTime) && remoteTime <= knownTime) return;
+        }
+        if (data.updated_at) lastCloudUpdatedAtRef.current = data.updated_at;
+        skipCloudSaveRef.current = true;
+        applyAppState(data.state);
+        setCloudStatus("Данные обновлены после возврата в приложение");
+        window.clearTimeout(remoteApplyTimerRef.current);
+        remoteApplyTimerRef.current = window.setTimeout(() => { skipCloudSaveRef.current = false; }, 700);
+      } catch (error) {
+        console.warn("Не удалось обновить данные при возврате", error);
+      }
+    };
+
+    document.addEventListener("visibilitychange", refreshOnFocus);
+    return () => {
+      document.removeEventListener("visibilitychange", refreshOnFocus);
+      supabase.removeChannel(channel);
+    };
+  }, [session?.user?.id, cloudLoaded]);
 
   useEffect(() => {
     if (!restTimer.running) return undefined;
@@ -1238,15 +1315,16 @@ function App() {
 
   async function saveCloudState(userId, state) {
     if (!supabase || !userId) return;
-    const { error } = await supabase.from(CLOUD_TABLE).upsert(
+    const { data, error } = await supabase.from(CLOUD_TABLE).upsert(
       {
         user_id: userId,
         state,
         updated_at: new Date().toISOString(),
       },
       { onConflict: "user_id" }
-    );
+    ).select("updated_at").single();
     if (error) throw error;
+    return data;
   }
 
   async function handleAuthSubmit(event) {
@@ -1269,7 +1347,7 @@ function App() {
         ? await supabase.auth.signUp({ email, password })
         : await supabase.auth.signInWithPassword({ email, password });
       if (result.error) throw result.error;
-      setAuthMessage(authMode === "signup" ? "Аккаунт создан. Если включено подтверждение email, проверь почту." : "Вход выполнен.");
+      setAuthMessage(authMode === "signup" ? "Аккаунт создан. Проверь письмо от Gym Helper и подтверди email, если подтверждение включено в Supabase." : "Вход выполнен.");
       setAuthPassword("");
     } catch (error) {
       setAuthMessage(error.message || "Не удалось выполнить вход.");
@@ -2454,12 +2532,12 @@ function ProfileMetric({ icon: Icon, label, value, detail }) {
 
 function ProfileScreen({ profile, updateProfile, nutritionPlan, bmi, trend, weightForm, setWeightForm, addWeightRecord, weightLog, deleteWeightRecord, auth }) {
   const [editing, setEditing] = useState(false);
-  const activity = activityLevels.find((level) => level.value === profile.activityLevel) || activityLevels[2];
+  const activity = activityLevels.find((level) => level.value === profile.activityLevel) || { label: "Не указана", detail: "заполни профиль" };
   const currentWeight = numeric(profile.weightKg);
   const targetWeight = numeric(profile.targetWeightKg);
   const goalDelta = targetWeight && currentWeight ? round(targetWeight - currentWeight, 1) : 0;
   const goalLabel = goalDelta === 0 ? "поддержание" : `${goalDelta > 0 ? "+" : ""}${goalDelta} кг до цели`;
-  const sexLabel = profile.sex === "male" ? "мужской" : "женский";
+  const sexLabel = profile.sex === "male" ? "мужской" : profile.sex === "female" ? "женский" : "пол не указан";
 
   return (
     <section className="screen stack">
@@ -2506,6 +2584,7 @@ function ProfileScreen({ profile, updateProfile, nutritionPlan, bmi, trend, weig
               <div className="field">
                 <label>Пол</label>
                 <select value={profile.sex} onChange={(event) => updateProfile("sex", event.target.value)}>
+                  <option value="">Выберите</option>
                   <option value="female">Женский</option>
                   <option value="male">Мужской</option>
                 </select>
@@ -2522,6 +2601,7 @@ function ProfileScreen({ profile, updateProfile, nutritionPlan, bmi, trend, weig
             <div className="field">
               <label>Активность</label>
               <select value={profile.activityLevel} onChange={(event) => updateProfile("activityLevel", event.target.value)}>
+                <option value="">Выберите активность</option>
                 {activityLevels.map((level) => <option key={level.value} value={level.value}>{level.label} · {level.detail}</option>)}
               </select>
             </div>
@@ -2825,9 +2905,9 @@ function WeightChart({ data, targetWeight }) {
   const points = [...data].filter((item) => numeric(item.weightKg) > 0).sort((a, b) => a.date.localeCompare(b.date));
   if (points.length < 2) return <div className="chart-empty">Недостаточно данных для графика</div>;
 
-  const width = 320;
-  const height = 170;
-  const padding = 26;
+  const width = 340;
+  const height = 190;
+  const pad = { top: 28, right: 42, bottom: 40, left: 48 };
   const values = points.map((item) => numeric(item.weightKg));
   const target = numeric(targetWeight);
   const min = Math.min(...values, target || Infinity) - 1;
@@ -2835,24 +2915,30 @@ function WeightChart({ data, targetWeight }) {
   const firstDate = new Date(points[0].date + "T12:00:00").getTime();
   const lastDate = new Date(points[points.length - 1].date + "T12:00:00").getTime();
   const span = Math.max(1, lastDate - firstDate);
+  const plotWidth = width - pad.left - pad.right;
+  const plotHeight = height - pad.top - pad.bottom;
   const coords = points.map((item) => {
-    const x = padding + ((new Date(item.date + "T12:00:00").getTime() - firstDate) / span) * (width - padding * 2);
-    const y = height - padding - ((numeric(item.weightKg) - min) / (max - min)) * (height - padding * 2);
+    const x = pad.left + ((new Date(item.date + "T12:00:00").getTime() - firstDate) / span) * plotWidth;
+    const y = pad.top + (1 - ((numeric(item.weightKg) - min) / (max - min))) * plotHeight;
     return { x, y, ...item };
   });
   const path = coords.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`).join(" ");
-  const targetY = target ? height - padding - ((target - min) / (max - min)) * (height - padding * 2) : null;
+  const targetY = target ? pad.top + (1 - ((target - min) / (max - min))) * plotHeight : null;
+  const firstLabel = formatShortDate(points[0].date);
+  const lastLabel = formatShortDate(points[points.length - 1].date);
 
   return (
     <svg className="weight-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="График изменения веса">
-      <line x1={padding} y1={height - padding} x2={width - padding} y2={height - padding} className="axis" />
-      <line x1={padding} y1={padding} x2={padding} y2={height - padding} className="axis" />
-      {targetY && <line x1={padding} y1={targetY} x2={width - padding} y2={targetY} className="target-line" />}
+      <line x1={pad.left} y1={height - pad.bottom} x2={width - pad.right} y2={height - pad.bottom} className="axis" />
+      <line x1={pad.left} y1={pad.top} x2={pad.left} y2={height - pad.bottom} className="axis" />
+      {targetY && <line x1={pad.left} y1={targetY} x2={width - pad.right} y2={targetY} className="target-line" />}
       <path d={path} className="weight-path" />
       {coords.map((point) => <circle key={point.id || point.date} cx={point.x} cy={point.y} r="4" className="weight-point" />)}
-      <text x={padding} y={18} className="chart-label">{round(max, 1)} кг</text>
-      <text x={padding} y={height - 6} className="chart-label">{round(min, 1)} кг</text>
-      {targetY && <text x={width - padding - 65} y={targetY - 6} className="target-label">цель {target} кг</text>}
+      <text x={pad.left - 8} y={pad.top + 4} textAnchor="end" className="chart-label">{round(max, 1)} кг</text>
+      <text x={pad.left - 8} y={height - pad.bottom + 4} textAnchor="end" className="chart-label">{round(min, 1)} кг</text>
+      <text x={pad.left} y={height - 12} textAnchor="start" className="chart-date-label">{firstLabel}</text>
+      <text x={width - pad.right} y={height - 12} textAnchor="end" className="chart-date-label">{lastLabel}</text>
+      {targetY && <text x={width - pad.right} y={Math.max(14, targetY - 7)} textAnchor="end" className="target-label">цель {target} кг</text>}
     </svg>
   );
 }

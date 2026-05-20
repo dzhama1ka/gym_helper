@@ -1,6 +1,6 @@
 # Gym Helper — Vite + React
 
-Мобильное веб-приложение для тренировок, профиля, веса и питания.
+Мобильное веб-приложение для тренировок, профиля, веса, питания и облачной синхронизации.
 
 ## Запуск локально
 
@@ -25,17 +25,21 @@ npm run dev
 
 Создай проект на Supabase и возьми:
 
-- Project URL
-- anon/public key
+- Project URL / API URL: `https://...supabase.co`
+- Publishable key / anon public key
 
-Обычно они находятся в Project Settings -> API.
-
-### 2. Создай таблицу
+### 2. Создай таблицу и включи Realtime
 
 Открой Supabase Dashboard -> SQL Editor -> New query и выполни SQL из файла:
 
 ```text
 supabase-schema.sql
+```
+
+Если таблица уже была создана ранее, можно выполнить только:
+
+```text
+supabase-realtime.sql
 ```
 
 Таблица называется `app_state`. В ней хранится один JSON-документ на пользователя: профиль, тренировки, вес, питание, избранные продукты и сохраненные меню.
@@ -46,7 +50,7 @@ supabase-schema.sql
 
 ```text
 VITE_SUPABASE_URL=твой Project URL
-VITE_SUPABASE_ANON_KEY=твой anon/public key
+VITE_SUPABASE_ANON_KEY=твой Publishable key / anon public key
 ```
 
 После этого сделай Redeploy.
@@ -56,15 +60,30 @@ VITE_SUPABASE_ANON_KEY=твой anon/public key
 - До входа данные хранятся локально в браузере.
 - После входа локальные данные объединяются с облаком.
 - После этого изменения автоматически сохраняются в Supabase.
-- При входе на другом устройстве данные подтягиваются из облака.
+- На другом устройстве данные обновляются через Supabase Realtime без ручного обновления страницы.
+- При одновременном редактировании на двух устройствах побеждает последняя сохраненная версия.
+
+## Брендированное письмо подтверждения
+
+В файле `supabase-email-template.md` есть готовый шаблон письма Gym Helper.
+
+Обычно путь такой:
+
+```text
+Supabase -> Authentication -> Email Templates -> Confirm signup
+```
+
+Туда можно вставить subject и HTML из файла. Для красивого имени отправителя `Gym Helper` лучше настроить Custom SMTP в Supabase.
 
 ## Штрихкод и питание
 
-Сканер ищет продукт в Open Food Facts и заполняет КБЖУ на 100 г. После сканирования проверь граммы и нажми `Добавить`. Если в Open Food Facts нет полного КБЖУ, введи данные с этикетки вручную.
+Сканер ищет продукт в Open Food Facts и заполняет КБЖУ на 100 г. После сканирования выбери граммовку и прием пищи, затем нажми `Добавить в дневник`. Если в Open Food Facts нет полного КБЖУ, введи данные с этикетки вручную.
 
 ## Основные файлы
 
 - `src/main.jsx` — логика приложения.
 - `src/styles.css` — внешний вид.
 - `public/exercises` — картинки упражнений.
-- `supabase-schema.sql` — таблица и RLS-политики для Supabase.
+- `supabase-schema.sql` — таблица, RLS-политики и Realtime.
+- `supabase-realtime.sql` — только включение Realtime для уже созданной таблицы.
+- `supabase-email-template.md` — шаблон письма подтверждения.
