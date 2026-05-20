@@ -1,0 +1,17 @@
+{
+  "name": "Мои тренировки",
+  "short_name": "Тренировки",
+  "description": "Дневник тренировок для учета упражнений, подходов, повторов и веса.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#020617",
+  "theme_color": "#020617",
+  "lang": "ru",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}
