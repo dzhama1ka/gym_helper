@@ -47,8 +47,9 @@ const WEIGHT_LOG_KEY = "mobile-workout-tracker-weight-log-v1";
 const NUTRITION_KEY = "mobile-workout-tracker-nutrition-v1";
 const FAVORITE_FOODS_KEY = "mobile-workout-tracker-favorite-foods-v1";
 const SAVED_MENUS_KEY = "mobile-workout-tracker-saved-menus-v1";
+const SCANNED_FOODS_KEY = "mobile-workout-tracker-scanned-foods-v1";
 const CLOUD_TABLE = "app_state";
-const APP_STATE_VERSION = 6;
+const APP_STATE_VERSION = 7;
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "";
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
 const supabase = SUPABASE_URL && SUPABASE_ANON_KEY ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
@@ -554,6 +555,18 @@ const foodDatabase = [
   { id: "yogurt", name: "Греческий йогурт 2%", calories: 73, protein: 10, fat: 2, carbs: 3.6 },
   { id: "apple", name: "Яблоко", calories: 52, protein: 0.3, fat: 0.2, carbs: 14 },
   { id: "tuna", name: "Тунец в собственном соку", calories: 116, protein: 26, fat: 1, carbs: 0 },
+  { id: "milk25", name: "Молоко 2.5%", calories: 52, protein: 3, fat: 2.5, carbs: 4.7 },
+  { id: "kefir25", name: "Кефир 2.5%", calories: 53, protein: 3, fat: 2.5, carbs: 4 },
+  { id: "bread-rye", name: "Хлеб ржаной", calories: 210, protein: 6, fat: 1.2, carbs: 43 },
+  { id: "pasta-cooked", name: "Макароны варёные", calories: 150, protein: 5, fat: 1, carbs: 30 },
+  { id: "beef-cooked", name: "Говядина готовая", calories: 250, protein: 26, fat: 15, carbs: 0 },
+  { id: "turkey", name: "Индейка готовая", calories: 135, protein: 29, fat: 1.5, carbs: 0 },
+  { id: "cheese", name: "Сыр полутвёрдый", calories: 350, protein: 24, fat: 28, carbs: 0 },
+  { id: "tomato", name: "Помидор", calories: 18, protein: 0.9, fat: 0.2, carbs: 3.9 },
+  { id: "cucumber", name: "Огурец", calories: 15, protein: 0.7, fat: 0.1, carbs: 3.6 },
+  { id: "avocado", name: "Авокадо", calories: 160, protein: 2, fat: 15, carbs: 9 },
+  { id: "almonds", name: "Миндаль", calories: 579, protein: 21, fat: 50, carbs: 22 },
+  { id: "whey", name: "Протеин сывороточный", calories: 390, protein: 78, fat: 6, carbs: 8 },
 ];
 
 const sampleMenu = [
@@ -664,6 +677,13 @@ function formatDate(dateString) {
   }).format(new Date(dateString + "T12:00:00"));
 }
 
+function formatShortDate(dateString) {
+  if (!dateString) return "—";
+  const [year, month, day] = String(dateString).split("-");
+  if (!year || !month || !day) return dateString;
+  return `${day}/${month}/${String(year).slice(-2)}`;
+}
+
 function uid() {
   return Math.random().toString(36).slice(2) + Date.now().toString(36);
 }
@@ -678,7 +698,7 @@ function round(value, digits = 0) {
   return Math.round(numeric(value) * factor) / factor;
 }
 
-function createAppState({ entries, profile, weightLog, nutritionEntries, favoriteFoods, savedMenus }) {
+function createAppState({ entries, profile, weightLog, nutritionEntries, favoriteFoods, savedMenus, scannedFoods }) {
   return {
     version: APP_STATE_VERSION,
     savedAt: new Date().toISOString(),
@@ -688,6 +708,7 @@ function createAppState({ entries, profile, weightLog, nutritionEntries, favorit
     nutritionEntries: Array.isArray(nutritionEntries) ? nutritionEntries : [],
     favoriteFoods: Array.isArray(favoriteFoods) ? favoriteFoods : [],
     savedMenus: Array.isArray(savedMenus) ? savedMenus : [],
+    scannedFoods: Array.isArray(scannedFoods) ? scannedFoods : [],
   };
 }
 
@@ -731,6 +752,7 @@ function mergeAppStates(cloudState, localState, preferLocalProfile) {
     nutritionEntries: mergeById(cloud.nutritionEntries, local.nutritionEntries),
     favoriteFoods: mergeFavoriteFoods(cloud.favoriteFoods, local.favoriteFoods),
     savedMenus: mergeById(cloud.savedMenus, local.savedMenus).slice(0, 20),
+    scannedFoods: mergeFavoriteFoods(cloud.scannedFoods, local.scannedFoods).slice(0, 80),
   });
 }
 
@@ -944,6 +966,7 @@ function App() {
   const [nutritionEntries, setNutritionEntries] = useState([]);
   const [favoriteFoods, setFavoriteFoods] = useState([]);
   const [savedMenus, setSavedMenus] = useState([]);
+  const [scannedFoods, setScannedFoods] = useState([]);
   const [tab, setTab] = useState("dashboard");
   const [selectedDate, setSelectedDate] = useState(todayISO());
   const [workoutForm, setWorkoutForm] = useState(emptyWorkoutForm());
@@ -970,7 +993,7 @@ function App() {
   const skipCloudSaveRef = useRef(false);
   const appStateRef = useRef(null);
 
-  appStateRef.current = createAppState({ entries, profile, weightLog, nutritionEntries, favoriteFoods, savedMenus });
+  appStateRef.current = createAppState({ entries, profile, weightLog, nutritionEntries, favoriteFoods, savedMenus, scannedFoods });
 
   useEffect(() => {
     try {
@@ -981,7 +1004,8 @@ function App() {
       const savedNutrition = localStorage.getItem(NUTRITION_KEY);
       const savedFavorites = localStorage.getItem(FAVORITE_FOODS_KEY);
       const savedMenusValue = localStorage.getItem(SAVED_MENUS_KEY);
-      hasLocalDataRef.current = Boolean(savedEntries || savedProfile || savedOldSettings || savedWeightLog || savedNutrition || savedFavorites || savedMenusValue);
+      const savedScannedFoods = localStorage.getItem(SCANNED_FOODS_KEY);
+      hasLocalDataRef.current = Boolean(savedEntries || savedProfile || savedOldSettings || savedWeightLog || savedNutrition || savedFavorites || savedMenusValue || savedScannedFoods);
 
       if (savedEntries) setEntries(JSON.parse(savedEntries));
       if (savedProfile) {
@@ -994,6 +1018,7 @@ function App() {
       if (savedNutrition) setNutritionEntries(JSON.parse(savedNutrition));
       if (savedFavorites) setFavoriteFoods(JSON.parse(savedFavorites));
       if (savedMenusValue) setSavedMenus(JSON.parse(savedMenusValue));
+      if (savedScannedFoods) setScannedFoods(JSON.parse(savedScannedFoods));
     } catch (error) {
       console.error("Не удалось загрузить данные", error);
     }
@@ -1005,6 +1030,7 @@ function App() {
   useEffect(() => localStorage.setItem(NUTRITION_KEY, JSON.stringify(nutritionEntries)), [nutritionEntries]);
   useEffect(() => localStorage.setItem(FAVORITE_FOODS_KEY, JSON.stringify(favoriteFoods)), [favoriteFoods]);
   useEffect(() => localStorage.setItem(SAVED_MENUS_KEY, JSON.stringify(savedMenus)), [savedMenus]);
+  useEffect(() => localStorage.setItem(SCANNED_FOODS_KEY, JSON.stringify(scannedFoods)), [scannedFoods]);
 
 
   useEffect(() => {
@@ -1092,7 +1118,7 @@ function App() {
     }, 900);
 
     return () => window.clearTimeout(timeout);
-  }, [session?.user?.id, cloudLoaded, entries, profile, weightLog, nutritionEntries, favoriteFoods, savedMenus]);
+  }, [session?.user?.id, cloudLoaded, entries, profile, weightLog, nutritionEntries, favoriteFoods, savedMenus, scannedFoods]);
 
   useEffect(() => {
     if (!restTimer.running) return undefined;
@@ -1148,7 +1174,17 @@ function App() {
   const bmi = useMemo(() => calculateBmi(profile.weightKg, profile.heightCm), [profile.weightKg, profile.heightCm]);
   const trend = useMemo(() => calculateWeightTrend(weightLog, profile.targetWeightKg), [weightLog, profile.targetWeightKg]);
 
-  const selectedFood = foodDatabase.find((item) => item.id === foodForm.foodId) || foodDatabase[0];
+  const commonFoodDatabase = useMemo(() => {
+    const map = new Map();
+    [...scannedFoods, ...foodDatabase].forEach((food) => {
+      if (!food?.name) return;
+      const id = food.id || `food-${normalize(food.name)}`;
+      if (!map.has(id)) map.set(id, { ...food, id });
+    });
+    return Array.from(map.values());
+  }, [scannedFoods]);
+
+  const selectedFood = commonFoodDatabase.find((item) => item.id === foodForm.foodId) || commonFoodDatabase[0] || foodDatabase[0];
   const foodSource = foodForm.name.trim()
     ? { name: foodForm.name.trim(), calories: numeric(foodForm.calories), protein: numeric(foodForm.protein), fat: numeric(foodForm.fat), carbs: numeric(foodForm.carbs) }
     : selectedFood;
@@ -1197,6 +1233,7 @@ function App() {
     setNutritionEntries(Array.isArray(state.nutritionEntries) ? state.nutritionEntries : []);
     setFavoriteFoods(Array.isArray(state.favoriteFoods) ? state.favoriteFoods : []);
     setSavedMenus(Array.isArray(state.savedMenus) ? state.savedMenus : []);
+    setScannedFoods(Array.isArray(state.scannedFoods) ? state.scannedFoods : []);
   }
 
   async function saveCloudState(userId, state) {
@@ -1396,7 +1433,7 @@ function App() {
   }
 
   function selectFood(foodId) {
-    const food = foodDatabase.find((item) => item.id === foodId) || foodDatabase[0];
+    const food = commonFoodDatabase.find((item) => item.id === foodId) || foodDatabase[0];
     setFoodForm((current) => ({
       ...current,
       foodId,
@@ -1405,6 +1442,7 @@ function App() {
       protein: String(food.protein),
       fat: String(food.fat),
       carbs: String(food.carbs),
+      grams: String(food.defaultGrams || current.grams || 100),
     }));
   }
 
@@ -1565,12 +1603,29 @@ function App() {
       fat: String(per100.fat || ""),
       carbs: String(per100.carbs || ""),
     }));
+    if (hasMacros) {
+      setScannedFoods((current) => {
+        const saved = {
+          id: `scan-${code}`,
+          code,
+          name,
+          calories: numeric(per100.calories),
+          protein: numeric(per100.protein),
+          fat: numeric(per100.fat),
+          carbs: numeric(per100.carbs),
+          defaultGrams: servingGrams || 100,
+          createdAt: Date.now(),
+        };
+        const withoutSame = current.filter((item) => item.code !== code && normalize(item.name) !== normalize(name));
+        return [saved, ...withoutSame].slice(0, 80);
+      });
+    }
     setScanner({
       active: false,
       message: hasMacros
         ? `Найдено: ${name}. КБЖУ заполнены на 100 г — проверь граммы и нажми «Добавить».`
         : `Найдено: ${name}, но в базе нет полного КБЖУ. Введи данные с этикетки вручную.`,
-      product: { code, name, per100 },
+      product: { code, name, per100, defaultGrams: servingGrams || 100 },
     });
   }
 
@@ -1700,14 +1755,14 @@ function App() {
               <DateCard selectedDate={selectedDate} setSelectedDate={setSelectedDate} />
               <RestTimerCard restTimer={restTimer} setRestTimer={setRestTimer} startRestTimer={startRestTimer} pauseRestTimer={pauseRestTimer} resetRestTimer={resetRestTimer} />
 
-              <div className="card stack">
-                <div className="section-head">
-                  <div>
-                    <h2>Шаблоны тренировок</h2>
-                    <p>Добавляют готовый план на выбранную дату</p>
-                  </div>
+              <details className="card stack template-details">
+                <summary>
+                  <span>
+                    <strong>Шаблоны тренировок</strong>
+                    <small>Готовые планы на выбранную дату</small>
+                  </span>
                   <ClipboardList className="muted-icon" />
-                </div>
+                </summary>
                 <div className="template-grid">
                   {workoutTemplates.map((template) => (
                     <button key={template.id} type="button" className="template-card" onClick={() => applyTemplate(template)}>
@@ -1716,7 +1771,7 @@ function App() {
                     </button>
                   ))}
                 </div>
-              </div>
+              </details>
 
               <form onSubmit={addWorkoutEntry} className="card stack">
                 <div className="section-head">
@@ -1818,6 +1873,7 @@ function App() {
               foodForm={foodForm}
               setFoodForm={setFoodForm}
               selectedFood={selectedFood}
+              commonFoodDatabase={commonFoodDatabase}
               selectFood={selectFood}
               favoriteFoods={favoriteFoods}
               applyFoodToForm={applyFoodToForm}
@@ -1988,7 +2044,7 @@ function RestTimerCard({ restTimer, setRestTimer, startRestTimer, pauseRestTimer
       </div>
       <div className="timer-presets">
         {[60, 90, 120, 180].map((secondsValue) => (
-          <button key={secondsValue} type="button" className={restTimer.seconds === secondsValue ? "active" : ""} onClick={() => setRestTimer({ seconds: secondsValue, left: secondsValue, running: false })}>{secondsValue / 60}м</button>
+          <button key={secondsValue} type="button" className={restTimer.seconds === secondsValue ? "active" : ""} onClick={() => setRestTimer({ seconds: secondsValue, left: secondsValue, running: false })}>{secondsValue}с</button>
         ))}
       </div>
       <div className="grid-3 timer-controls">
@@ -2027,6 +2083,7 @@ function NutritionScreen({
   foodForm,
   setFoodForm,
   selectedFood,
+  commonFoodDatabase,
   selectFood,
   favoriteFoods,
   applyFoodToForm,
@@ -2137,9 +2194,9 @@ function NutritionScreen({
         </div>
 
         <div className="field">
-          <label>Быстрая база</label>
+          <label>Общий список продуктов</label>
           <select value={foodForm.foodId} onChange={(event) => selectFood(event.target.value)}>
-            {foodDatabase.map((food) => <option key={food.id} value={food.id}>{food.name}</option>)}
+            {commonFoodDatabase.map((food) => <option key={food.id} value={food.id}>{food.code ? "📦 " : ""}{food.name}</option>)}
           </select>
         </div>
 
@@ -2195,8 +2252,18 @@ function NutritionScreen({
             <div>
               <strong>{scanner.product.name}</strong>
               <p>{scanner.product.per100?.calories || 0} ккал · Б {scanner.product.per100?.protein || 0} · Ж {scanner.product.per100?.fat || 0} · У {scanner.product.per100?.carbs || 0} на 100 г</p>
+              <small>Продукт сохранён в общем списке отсканированных товаров.</small>
             </div>
-            <button type="button" className="primary-button" onClick={() => addNutritionEntry()}><Plus size={18} /> Добавить найденный продукт</button>
+            <div className="scanner-add-grid">
+              <div className="field">
+                <label>Приём пищи</label>
+                <select value={foodForm.meal} onChange={(event) => setFoodForm((current) => ({ ...current, meal: event.target.value }))}>
+                  {meals.map((meal) => <option key={meal.id} value={meal.id}>{meal.label}</option>)}
+                </select>
+              </div>
+              <NumberField label="Граммы" value={foodForm.grams} onChange={(value) => setFoodForm((current) => ({ ...current, grams: value }))} />
+            </div>
+            <button type="button" className="primary-button" onClick={() => addNutritionEntry()}><Plus size={18} /> Добавить в дневник</button>
           </div>
         )}
         <p className="hint">В Safari используется fallback через ZXing. Камера работает только на HTTPS или localhost. По фото тарелки точность ограничена: без веса порции приложение не знает реальное количество граммов.</p>
@@ -2356,7 +2423,7 @@ function ProfileScreen({ profile, updateProfile, nutritionPlan, bmi, trend, weig
   return (
     <section className="screen stack">
       <AuthCard auth={auth} />
-      <div className="card profile-hero-card">
+      <div className={`card profile-hero-card ${editing ? "is-editing" : ""}`}>
         <div className="profile-hero-main">
           <div className="profile-avatar"><UserRound size={28} /></div>
           <div className="profile-title-block">
@@ -2364,73 +2431,65 @@ function ProfileScreen({ profile, updateProfile, nutritionPlan, bmi, trend, weig
             <h2>{profile.name?.trim() || "Мой профиль"}</h2>
             <p>{sexLabel} · {profile.age || "—"} лет · {activity.label.toLowerCase()}</p>
           </div>
-          <button type="button" className="edit-profile-button" onClick={() => setEditing((value) => !value)}>
-            {editing ? <><Save size={17} /> Готово</> : <><UserRound size={17} /> Редактировать профиль</>}
-          </button>
         </div>
 
-        <div className="goal-strip">
-          <div>
-            <span>Текущая цель</span>
-            <strong>{goalLabel}</strong>
-          </div>
-          <div>
-            <span>Калории на день</span>
-            <strong>{nutritionPlan.targetCalories || 0} ккал</strong>
-          </div>
-        </div>
-
-        <div className="profile-overview-grid">
-          <ProfileMetric icon={Weight} label="Вес" value={`${profile.weightKg || "—"} кг`} detail="используется в кардио" />
-          <ProfileMetric icon={Target} label="Цель" value={`${profile.targetWeightKg || "—"} кг`} detail={`темп ${profile.weeklyChangeKg || "—"} кг/нед.`} />
-          <ProfileMetric icon={Activity} label="Активность" value={activity.label} detail={activity.detail} />
-          <ProfileMetric icon={Calculator} label="BMI" value={bmi ? round(bmi, 1) : "—"} detail={bmiCategory(bmi)} />
-        </div>
-      </div>
-
-      {editing && (
-        <div className="card stack profile-editor">
-          <div className="section-head">
-            <div>
-              <h2>Редактирование профиля</h2>
-              <p>Меняй данные здесь — расчеты обновятся автоматически</p>
+        {!editing ? (
+          <>
+            <div className="goal-strip">
+              <div>
+                <span>Текущая цель</span>
+                <strong>{goalLabel}</strong>
+              </div>
+              <div>
+                <span>Калории на день</span>
+                <strong>{nutritionPlan.targetCalories || 0} ккал</strong>
+              </div>
             </div>
-            <button type="button" className="icon-button" onClick={() => setEditing(false)} aria-label="Закрыть редактирование"><X size={18} /></button>
-          </div>
 
-          <div className="field">
-            <label>Имя</label>
-            <input value={profile.name} onChange={(event) => updateProfile("name", event.target.value)} placeholder="Например: Мария" />
-          </div>
-
-          <div className="grid-2">
+            <div className="profile-overview-grid">
+              <ProfileMetric icon={Weight} label="Вес" value={`${profile.weightKg || "—"} кг`} detail="используется в кардио" />
+              <ProfileMetric icon={Target} label="Цель" value={`${profile.targetWeightKg || "—"} кг`} detail={`темп ${profile.weeklyChangeKg || "—"} кг/нед.`} />
+              <ProfileMetric icon={Activity} label="Активность" value={activity.label} detail={activity.detail} />
+              <ProfileMetric icon={Calculator} label="BMI" value={bmi ? round(bmi, 1) : "—"} detail={bmiCategory(bmi)} />
+            </div>
+            <button type="button" className="edit-profile-button" onClick={() => setEditing(true)}><UserRound size={17} /> Редактировать профиль</button>
+          </>
+        ) : (
+          <div className="profile-inline-editor">
             <div className="field">
-              <label>Пол</label>
-              <select value={profile.sex} onChange={(event) => updateProfile("sex", event.target.value)}>
-                <option value="female">Женский</option>
-                <option value="male">Мужской</option>
+              <label>Имя</label>
+              <input value={profile.name} onChange={(event) => updateProfile("name", event.target.value)} placeholder="Например: Мария" />
+            </div>
+
+            <div className="grid-2">
+              <div className="field">
+                <label>Пол</label>
+                <select value={profile.sex} onChange={(event) => updateProfile("sex", event.target.value)}>
+                  <option value="female">Женский</option>
+                  <option value="male">Мужской</option>
+                </select>
+              </div>
+              <NumberField label="Возраст" value={profile.age} onChange={(value) => updateProfile("age", value)} />
+            </div>
+
+            <div className="grid-3 profile-number-grid">
+              <NumberField label="Рост, см" value={profile.heightCm} onChange={(value) => updateProfile("heightCm", value)} />
+              <NumberField label="Вес, кг" value={profile.weightKg} onChange={(value) => updateProfile("weightKg", value)} />
+              <NumberField label="Цель, кг" value={profile.targetWeightKg} onChange={(value) => updateProfile("targetWeightKg", value)} />
+            </div>
+
+            <div className="field">
+              <label>Активность</label>
+              <select value={profile.activityLevel} onChange={(event) => updateProfile("activityLevel", event.target.value)}>
+                {activityLevels.map((level) => <option key={level.value} value={level.value}>{level.label} · {level.detail}</option>)}
               </select>
             </div>
-            <NumberField label="Возраст" value={profile.age} onChange={(value) => updateProfile("age", value)} />
-          </div>
 
-          <div className="grid-3">
-            <NumberField label="Рост, см" value={profile.heightCm} onChange={(value) => updateProfile("heightCm", value)} />
-            <NumberField label="Вес, кг" value={profile.weightKg} onChange={(value) => updateProfile("weightKg", value)} />
-            <NumberField label="Цель, кг" value={profile.targetWeightKg} onChange={(value) => updateProfile("targetWeightKg", value)} />
+            <NumberField label="План изменения веса, кг/нед." value={profile.weeklyChangeKg} onChange={(value) => updateProfile("weeklyChangeKg", value)} />
+            <button type="button" className="primary-button profile-save-button" onClick={() => setEditing(false)}><Save size={18} /> Сохранить</button>
           </div>
-
-          <div className="field">
-            <label>Активность</label>
-            <select value={profile.activityLevel} onChange={(event) => updateProfile("activityLevel", event.target.value)}>
-              {activityLevels.map((level) => <option key={level.value} value={level.value}>{level.label} · {level.detail}</option>)}
-            </select>
-          </div>
-
-          <NumberField label="План изменения веса, кг/нед." value={profile.weeklyChangeKg} onChange={(value) => updateProfile("weeklyChangeKg", value)} />
-          <button type="button" className="primary-button" onClick={() => setEditing(false)}><Save size={18} /> Сохранить и скрыть форму</button>
-        </div>
-      )}
+        )}
+      </div>
 
       <div className="grid-2">
         <StatCard icon={Calculator} label="BMR" value={`${nutritionPlan.bmr || 0}`} suffix="ккал" />
@@ -2463,7 +2522,7 @@ function ProfileScreen({ profile, updateProfile, nutritionPlan, bmi, trend, weig
           </div>
           <LineChart className="muted-icon" />
         </div>
-        <form onSubmit={addWeightRecord} className="grid-3 align-end">
+        <form onSubmit={addWeightRecord} className="grid-3 align-end weight-form-grid">
           <div className="field">
             <label>Дата</label>
             <input type="date" value={weightForm.date} onChange={(event) => setWeightForm((current) => ({ ...current, date: event.target.value }))} />
@@ -2593,9 +2652,12 @@ function BottomNavButton({ active, onClick, icon: Icon, label }) {
 
 function DateCard({ selectedDate, setSelectedDate }) {
   return (
-    <div className="card compact-card">
+    <div className="card compact-card date-card-row">
       <label className="date-label"><CalendarDays size={18} /> Дата</label>
-      <input type="date" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} />
+      <label className="date-picker-shell" aria-label="Выбрать дату">
+        <span>{formatShortDate(selectedDate)}</span>
+        <input type="date" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} />
+      </label>
     </div>
   );
 }
