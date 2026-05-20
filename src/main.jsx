@@ -3,18 +3,29 @@ import { createRoot } from "react-dom/client";
 import {
   Activity,
   Apple,
+  BarChart3,
   Bike,
   Calculator,
   CalendarDays,
   Camera,
+  ClipboardList,
+  Copy,
   Dumbbell,
   Flame,
   HeartPulse,
   History,
+  Home,
   LineChart,
+  ListPlus,
+  Pause,
+  Play,
   Plus,
+  RotateCcw,
   Route,
+  Save,
   Search,
+  Star,
+  Target,
   Timer,
   Trash2,
   Trophy,
@@ -26,11 +37,14 @@ import {
 } from "lucide-react";
 import "./styles.css";
 
-const WORKOUT_KEY = "mobile-workout-tracker-v2";
+const WORKOUT_KEY = "mobile-workout-tracker-v3";
+const OLD_WORKOUT_KEY = "mobile-workout-tracker-v2";
 const OLD_SETTINGS_KEY = "mobile-workout-tracker-settings-v1";
 const PROFILE_KEY = "mobile-workout-tracker-profile-v1";
 const WEIGHT_LOG_KEY = "mobile-workout-tracker-weight-log-v1";
 const NUTRITION_KEY = "mobile-workout-tracker-nutrition-v1";
+const FAVORITE_FOODS_KEY = "mobile-workout-tracker-favorite-foods-v1";
+const SAVED_MENUS_KEY = "mobile-workout-tracker-saved-menus-v1";
 
 const strengthExercises = [
   "Жим лёжа",
@@ -39,6 +53,13 @@ const strengthExercises = [
   "Подтягивания",
   "Жим гантелей",
   "Тяга верхнего блока",
+  "Тяга штанги в наклоне",
+  "Жим ногами",
+  "Румынская тяга",
+  "Разгибание ног",
+  "Сгибание ног",
+  "Подъём на бицепс",
+  "Французский жим",
   "Выпады",
   "Планка",
 ];
@@ -131,6 +152,8 @@ const foodDatabase = [
   { id: "broccoli", name: "Брокколи", calories: 35, protein: 2.4, fat: 0.4, carbs: 7 },
   { id: "oliveoil", name: "Оливковое масло", calories: 884, protein: 0, fat: 100, carbs: 0 },
   { id: "yogurt", name: "Греческий йогурт 2%", calories: 73, protein: 10, fat: 2, carbs: 3.6 },
+  { id: "apple", name: "Яблоко", calories: 52, protein: 0.3, fat: 0.2, carbs: 14 },
+  { id: "tuna", name: "Тунец в собственном соку", calories: 116, protein: 26, fat: 1, carbs: 0 },
 ];
 
 const sampleMenu = [
@@ -145,6 +168,64 @@ const sampleMenu = [
   { meal: "dinner", foodId: "rice", grams: 180 },
   { meal: "dinner", foodId: "broccoli", grams: 180 },
   { meal: "dinner", foodId: "oliveoil", grams: 8 },
+];
+
+const workoutTemplates = [
+  {
+    id: "push",
+    name: "Грудь + трицепс",
+    detail: "4 упражнения · базовая силовая",
+    items: [
+      { type: "strength", name: "Жим лёжа", sets: 4, reps: 8, weight: "" },
+      { type: "strength", name: "Жим гантелей", sets: 3, reps: 10, weight: "" },
+      { type: "strength", name: "Французский жим", sets: 3, reps: 12, weight: "" },
+      { type: "strength", name: "Планка", sets: 3, reps: 1, weight: "" },
+    ],
+  },
+  {
+    id: "pull",
+    name: "Спина + бицепс",
+    detail: "4 упражнения · тяги и руки",
+    items: [
+      { type: "strength", name: "Подтягивания", sets: 4, reps: 6, weight: "" },
+      { type: "strength", name: "Тяга верхнего блока", sets: 3, reps: 10, weight: "" },
+      { type: "strength", name: "Тяга штанги в наклоне", sets: 3, reps: 8, weight: "" },
+      { type: "strength", name: "Подъём на бицепс", sets: 3, reps: 12, weight: "" },
+    ],
+  },
+  {
+    id: "legs",
+    name: "Ноги",
+    detail: "5 упражнений · квадрицепс/задняя поверхность",
+    items: [
+      { type: "strength", name: "Приседания", sets: 4, reps: 8, weight: "" },
+      { type: "strength", name: "Румынская тяга", sets: 3, reps: 10, weight: "" },
+      { type: "strength", name: "Жим ногами", sets: 3, reps: 12, weight: "" },
+      { type: "strength", name: "Разгибание ног", sets: 3, reps: 12, weight: "" },
+      { type: "strength", name: "Сгибание ног", sets: 3, reps: 12, weight: "" },
+    ],
+  },
+  {
+    id: "fullbody",
+    name: "Full body",
+    detail: "5 упражнений · всё тело",
+    items: [
+      { type: "strength", name: "Приседания", sets: 3, reps: 8, weight: "" },
+      { type: "strength", name: "Жим лёжа", sets: 3, reps: 8, weight: "" },
+      { type: "strength", name: "Тяга верхнего блока", sets: 3, reps: 10, weight: "" },
+      { type: "strength", name: "Выпады", sets: 3, reps: 10, weight: "" },
+      { type: "strength", name: "Планка", sets: 3, reps: 1, weight: "" },
+    ],
+  },
+  {
+    id: "cardio",
+    name: "Кардио 30 минут",
+    detail: "дорожка + эллипс",
+    items: [
+      { type: "cardio", name: "Беговая дорожка", duration: 20, distance: 3, intensityId: "run-8" },
+      { type: "cardio", name: "Эллипс", duration: 10, distance: 1, intensityId: "elliptical-moderate" },
+    ],
+  },
 ];
 
 const defaultProfile = {
@@ -167,6 +248,12 @@ function normalize(value) {
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function shiftDateISO(dateString, days) {
+  const date = new Date(dateString + "T12:00:00");
+  date.setDate(date.getDate() + days);
+  return date.toISOString().slice(0, 10);
 }
 
 function formatDate(dateString) {
@@ -327,15 +414,7 @@ function calculateWeightTrend(weightLog, targetWeight) {
   const movingToGoal = Math.sign(remaining) === Math.sign(kgPerWeek) && Math.abs(kgPerWeek) > 0.03;
   const weeksToGoal = movingToGoal ? Math.abs(remaining / kgPerWeek) : null;
 
-  return {
-    first,
-    last,
-    days,
-    delta,
-    kgPerWeek,
-    caloriesPerDay,
-    weeksToGoal,
-  };
+  return { first, last, days, delta, kgPerWeek, caloriesPerDay, weeksToGoal };
 }
 
 function volume(entry) {
@@ -348,25 +427,31 @@ function App() {
   const [profile, setProfile] = useState(defaultProfile);
   const [weightLog, setWeightLog] = useState([]);
   const [nutritionEntries, setNutritionEntries] = useState([]);
-  const [tab, setTab] = useState("today");
+  const [favoriteFoods, setFavoriteFoods] = useState([]);
+  const [savedMenus, setSavedMenus] = useState([]);
+  const [tab, setTab] = useState("dashboard");
   const [selectedDate, setSelectedDate] = useState(todayISO());
   const [workoutForm, setWorkoutForm] = useState(emptyWorkoutForm());
   const [foodForm, setFoodForm] = useState(emptyFoodForm());
   const [query, setQuery] = useState("");
+  const [progressExercise, setProgressExercise] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [weightForm, setWeightForm] = useState({ date: todayISO(), weightKg: "" });
   const [scanner, setScanner] = useState({ active: false, message: "", product: null });
+  const [restTimer, setRestTimer] = useState({ seconds: 90, left: 90, running: false });
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   const scanFrameRef = useRef(null);
 
   useEffect(() => {
     try {
-      const savedEntries = localStorage.getItem(WORKOUT_KEY);
+      const savedEntries = localStorage.getItem(WORKOUT_KEY) || localStorage.getItem(OLD_WORKOUT_KEY);
       const savedOldSettings = localStorage.getItem(OLD_SETTINGS_KEY);
       const savedProfile = localStorage.getItem(PROFILE_KEY);
       const savedWeightLog = localStorage.getItem(WEIGHT_LOG_KEY);
       const savedNutrition = localStorage.getItem(NUTRITION_KEY);
+      const savedFavorites = localStorage.getItem(FAVORITE_FOODS_KEY);
+      const savedMenusValue = localStorage.getItem(SAVED_MENUS_KEY);
 
       if (savedEntries) setEntries(JSON.parse(savedEntries));
       if (savedProfile) {
@@ -377,30 +462,32 @@ function App() {
       }
       if (savedWeightLog) setWeightLog(JSON.parse(savedWeightLog));
       if (savedNutrition) setNutritionEntries(JSON.parse(savedNutrition));
+      if (savedFavorites) setFavoriteFoods(JSON.parse(savedFavorites));
+      if (savedMenusValue) setSavedMenus(JSON.parse(savedMenusValue));
     } catch (error) {
       console.error("Не удалось загрузить данные", error);
     }
   }, []);
 
-  useEffect(() => {
-    localStorage.setItem(WORKOUT_KEY, JSON.stringify(entries));
-  }, [entries]);
+  useEffect(() => localStorage.setItem(WORKOUT_KEY, JSON.stringify(entries)), [entries]);
+  useEffect(() => localStorage.setItem(PROFILE_KEY, JSON.stringify(profile)), [profile]);
+  useEffect(() => localStorage.setItem(WEIGHT_LOG_KEY, JSON.stringify(weightLog)), [weightLog]);
+  useEffect(() => localStorage.setItem(NUTRITION_KEY, JSON.stringify(nutritionEntries)), [nutritionEntries]);
+  useEffect(() => localStorage.setItem(FAVORITE_FOODS_KEY, JSON.stringify(favoriteFoods)), [favoriteFoods]);
+  useEffect(() => localStorage.setItem(SAVED_MENUS_KEY, JSON.stringify(savedMenus)), [savedMenus]);
 
   useEffect(() => {
-    localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
-  }, [profile]);
+    if (!restTimer.running) return undefined;
+    const interval = window.setInterval(() => {
+      setRestTimer((current) => {
+        if (current.left <= 1) return { ...current, left: 0, running: false };
+        return { ...current, left: current.left - 1 };
+      });
+    }, 1000);
+    return () => window.clearInterval(interval);
+  }, [restTimer.running]);
 
-  useEffect(() => {
-    localStorage.setItem(WEIGHT_LOG_KEY, JSON.stringify(weightLog));
-  }, [weightLog]);
-
-  useEffect(() => {
-    localStorage.setItem(NUTRITION_KEY, JSON.stringify(nutritionEntries));
-  }, [nutritionEntries]);
-
-  useEffect(() => {
-    return () => stopScanner();
-  }, []);
+  useEffect(() => () => stopScanner(), []);
 
   const cardioNames = Object.keys(cardioProfiles);
 
@@ -411,8 +498,8 @@ function App() {
   }, [entries]);
 
   const resolvedCardioName = workoutForm.type === "cardio" ? resolveCardioName(workoutForm.name) || workoutForm.name : null;
-  const cardioProfile = workoutForm.type === "cardio" ? getCardioProfile(workoutForm.name) || cardioProfiles["Беговая дорожка"] : null;
-  const selectedIntensity = getIntensity(cardioProfile, workoutForm.intensityId);
+  const activeCardioProfile = workoutForm.type === "cardio" ? getCardioProfile(workoutForm.name) || cardioProfiles["Беговая дорожка"] : null;
+  const selectedIntensity = getIntensity(activeCardioProfile, workoutForm.intensityId);
   const estimatedWorkoutCalories = calculateExerciseCalories({
     met: selectedIntensity?.met,
     weightKg: profile.weightKg,
@@ -426,11 +513,7 @@ function App() {
     return source.filter((name) => normalize(name).includes(value)).slice(0, 7);
   }, [exerciseNames, workoutForm.name, workoutForm.type]);
 
-  const dateEntries = useMemo(() => {
-    return entries
-      .filter((entry) => entry.date === selectedDate)
-      .sort((a, b) => b.createdAt - a.createdAt);
-  }, [entries, selectedDate]);
+  const dateEntries = useMemo(() => entries.filter((entry) => entry.date === selectedDate).sort((a, b) => b.createdAt - a.createdAt), [entries, selectedDate]);
 
   const groupedHistory = useMemo(() => {
     const filtered = entries.filter((entry) => entry.name.toLowerCase().includes(query.trim().toLowerCase()));
@@ -442,20 +525,13 @@ function App() {
   }, [entries, query]);
 
   const sortedHistoryDates = useMemo(() => Object.keys(groupedHistory).sort((a, b) => b.localeCompare(a)), [groupedHistory]);
-
   const nutritionPlan = useMemo(() => calculateNutritionPlan(profile), [profile]);
   const bmi = useMemo(() => calculateBmi(profile.weightKg, profile.heightCm), [profile.weightKg, profile.heightCm]);
   const trend = useMemo(() => calculateWeightTrend(weightLog, profile.targetWeightKg), [weightLog, profile.targetWeightKg]);
 
   const selectedFood = foodDatabase.find((item) => item.id === foodForm.foodId) || foodDatabase[0];
   const foodSource = foodForm.name.trim()
-    ? {
-        name: foodForm.name.trim(),
-        calories: numeric(foodForm.calories),
-        protein: numeric(foodForm.protein),
-        fat: numeric(foodForm.fat),
-        carbs: numeric(foodForm.carbs),
-      }
+    ? { name: foodForm.name.trim(), calories: numeric(foodForm.calories), protein: numeric(foodForm.protein), fat: numeric(foodForm.fat), carbs: numeric(foodForm.carbs) }
     : selectedFood;
   const foodPreview = calculateFoodAmount(foodSource, foodForm.grams);
 
@@ -470,7 +546,6 @@ function App() {
       }),
       { calories: 0, protein: 0, fat: 0, carbs: 0 }
     );
-
     return { daily, totals };
   }, [nutritionEntries, selectedDate]);
 
@@ -481,6 +556,31 @@ function App() {
     }, {});
   }, [dayNutrition.daily]);
 
+  const dayWorkoutSummary = useMemo(() => {
+    const strength = dateEntries.filter((entry) => entry.type !== "cardio");
+    const cardio = dateEntries.filter((entry) => entry.type === "cardio");
+    return {
+      strengthCount: strength.length,
+      cardioCount: cardio.length,
+      cardioCalories: cardio.reduce((sum, entry) => sum + numeric(entry.calories), 0),
+      volume: strength.reduce((sum, entry) => sum + volume(entry), 0),
+      minutes: cardio.reduce((sum, entry) => sum + numeric(entry.duration), 0),
+    };
+  }, [dateEntries]);
+
+  const progressNames = useMemo(() => {
+    const names = Array.from(new Set(entries.map((entry) => entry.name))).sort((a, b) => a.localeCompare(b, "ru"));
+    return names.length ? names : exerciseNames;
+  }, [entries, exerciseNames]);
+
+  useEffect(() => {
+    if (!progressExercise && progressNames.length) setProgressExercise(progressNames[0]);
+  }, [progressExercise, progressNames]);
+
+  const selectedProgressEntries = useMemo(() => {
+    return entries.filter((entry) => entry.name === progressExercise).sort((a, b) => a.date.localeCompare(b.date));
+  }, [entries, progressExercise]);
+
   function updateProfile(field, value) {
     setProfile((current) => ({ ...current, [field]: value }));
   }
@@ -490,11 +590,7 @@ function App() {
   }
 
   function selectWorkoutType(type) {
-    setWorkoutForm((current) => ({
-      ...emptyWorkoutForm(),
-      type,
-      name: type === "cardio" ? "Беговая дорожка" : current.name,
-    }));
+    setWorkoutForm((current) => ({ ...emptyWorkoutForm(), type, name: type === "cardio" ? "Беговая дорожка" : current.name }));
     setShowSuggestions(false);
   }
 
@@ -509,21 +605,55 @@ function App() {
     setShowSuggestions(false);
   }
 
+  function makeWorkoutEntryFromTemplate(item, index = 0) {
+    if (item.type === "cardio") {
+      const profileForEntry = getCardioProfile(item.name) || cardioProfiles["Беговая дорожка"];
+      const intensity = getIntensity(profileForEntry, item.intensityId);
+      const calories = calculateExerciseCalories({ met: intensity?.met, weightKg: profile.weightKg, minutes: item.duration });
+      return {
+        id: uid(),
+        date: selectedDate,
+        type: "cardio",
+        name: resolveCardioName(item.name) || item.name,
+        duration: numeric(item.duration),
+        intensityId: intensity?.id || "",
+        intensityLabel: intensity?.label || "",
+        met: intensity?.met || 0,
+        distance: numeric(item.distance),
+        calories,
+        note: "Из шаблона",
+        createdAt: Date.now() + index,
+      };
+    }
+    return {
+      id: uid(),
+      date: selectedDate,
+      type: "strength",
+      name: item.name,
+      sets: numeric(item.sets),
+      reps: numeric(item.reps),
+      weight: item.weight === "" ? "" : numeric(item.weight),
+      note: "Из шаблона",
+      createdAt: Date.now() + index,
+    };
+  }
+
+  function applyTemplate(template) {
+    const generated = template.items.map((item, index) => makeWorkoutEntryFromTemplate(item, index));
+    setEntries((current) => [...generated, ...current]);
+    setTab("training");
+  }
+
   function addWorkoutEntry(event) {
     event.preventDefault();
     const name = workoutForm.name.trim();
     if (!name) return;
 
     if (workoutForm.type === "cardio") {
-      const profileForEntry = getCardioProfile(name) || cardioProfile;
+      const profileForEntry = getCardioProfile(name) || activeCardioProfile;
       const intensity = getIntensity(profileForEntry, workoutForm.intensityId);
       const minutes = numeric(workoutForm.duration);
-      const calories = numeric(workoutForm.calories) || calculateExerciseCalories({
-        met: intensity?.met,
-        weightKg: profile.weightKg,
-        minutes,
-      });
-
+      const calories = numeric(workoutForm.calories) || calculateExerciseCalories({ met: intensity?.met, weightKg: profile.weightKg, minutes });
       if (minutes <= 0) return;
 
       setEntries((current) => [
@@ -602,6 +732,42 @@ function App() {
     }));
   }
 
+  function applyFoodToForm(food) {
+    setFoodForm((current) => ({
+      ...current,
+      name: food.name,
+      calories: String(food.calories),
+      protein: String(food.protein),
+      fat: String(food.fat),
+      carbs: String(food.carbs),
+      grams: String(food.defaultGrams || current.grams || 100),
+    }));
+  }
+
+  function saveCurrentFoodAsFavorite() {
+    const food = foodSource;
+    if (!food.name || !numeric(food.calories)) return;
+    setFavoriteFoods((current) => {
+      const withoutSame = current.filter((item) => normalize(item.name) !== normalize(food.name));
+      return [
+        {
+          id: uid(),
+          name: food.name,
+          calories: numeric(food.calories),
+          protein: numeric(food.protein),
+          fat: numeric(food.fat),
+          carbs: numeric(food.carbs),
+          defaultGrams: numeric(foodForm.grams, 100),
+        },
+        ...withoutSame,
+      ].slice(0, 20);
+    });
+  }
+
+  function deleteFavoriteFood(id) {
+    setFavoriteFoods((current) => current.filter((item) => item.id !== id));
+  }
+
   function addNutritionEntry(event) {
     event.preventDefault();
     const food = foodSource;
@@ -616,12 +782,7 @@ function App() {
         meal: foodForm.meal,
         name: food.name,
         grams,
-        per100: {
-          calories: numeric(food.calories),
-          protein: numeric(food.protein),
-          fat: numeric(food.fat),
-          carbs: numeric(food.carbs),
-        },
+        per100: { calories: numeric(food.calories), protein: numeric(food.protein), fat: numeric(food.fat), carbs: numeric(food.carbs) },
         total,
         createdAt: Date.now(),
       },
@@ -651,12 +812,7 @@ function App() {
         meal: item.meal,
         name: item.food.name,
         grams,
-        per100: {
-          calories: item.food.calories,
-          protein: item.food.protein,
-          fat: item.food.fat,
-          carbs: item.food.carbs,
-        },
+        per100: { calories: item.food.calories, protein: item.food.protein, fat: item.food.fat, carbs: item.food.carbs },
         total,
         createdAt: Date.now(),
       };
@@ -665,10 +821,53 @@ function App() {
     setNutritionEntries((current) => [...generated, ...current.filter((item) => item.date !== selectedDate)]);
   }
 
+  function copyYesterdayNutrition() {
+    const yesterday = shiftDateISO(selectedDate, -1);
+    const yesterdayItems = nutritionEntries.filter((item) => item.date === yesterday);
+    if (!yesterdayItems.length) return;
+    const copied = yesterdayItems.map((item) => ({ ...item, id: uid(), date: selectedDate, createdAt: Date.now() }));
+    setNutritionEntries((current) => [...copied, ...current.filter((item) => item.date !== selectedDate)]);
+  }
+
+  function saveDayAsMenu() {
+    if (!dayNutrition.daily.length) return;
+    const title = `Меню ${formatDate(selectedDate)}`;
+    const saved = {
+      id: uid(),
+      title,
+      items: dayNutrition.daily.map((item) => ({ meal: item.meal, name: item.name, grams: item.grams, per100: item.per100 })),
+      calories: Math.round(dayNutrition.totals.calories),
+      createdAt: Date.now(),
+    };
+    setSavedMenus((current) => [saved, ...current].slice(0, 8));
+  }
+
+  function applySavedMenu(menu) {
+    const items = menu.items.map((item) => {
+      const total = calculateFoodAmount(item.per100, item.grams);
+      return { id: uid(), date: selectedDate, meal: item.meal, name: item.name, grams: item.grams, per100: item.per100, total, createdAt: Date.now() };
+    });
+    setNutritionEntries((current) => [...items, ...current.filter((item) => item.date !== selectedDate)]);
+  }
+
+  function deleteSavedMenu(id) {
+    setSavedMenus((current) => current.filter((item) => item.id !== id));
+  }
+
+  function startRestTimer(seconds = restTimer.seconds) {
+    setRestTimer({ seconds, left: seconds, running: true });
+  }
+
+  function pauseRestTimer() {
+    setRestTimer((current) => ({ ...current, running: !current.running && current.left > 0 }));
+  }
+
+  function resetRestTimer() {
+    setRestTimer((current) => ({ ...current, left: current.seconds, running: false }));
+  }
+
   async function fetchOpenFoodFactsProduct(code) {
-    const url = `https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(
-      code
-    )}.json?fields=product_name,brands,nutriments,serving_size`;
+    const url = `https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(code)}.json?fields=product_name,brands,nutriments,serving_size`;
     const response = await fetch(url);
     if (!response.ok) throw new Error("Не удалось получить продукт");
     const data = await response.json();
@@ -705,11 +904,7 @@ function App() {
   async function startScanner() {
     try {
       if (!("BarcodeDetector" in window)) {
-        setScanner({
-          active: false,
-          message: "Этот браузер не поддерживает BarcodeDetector. Можно ввести продукт вручную.",
-          product: null,
-        });
+        setScanner({ active: false, message: "Этот браузер не поддерживает BarcodeDetector. Можно ввести продукт вручную.", product: null });
         return;
       }
       if (!navigator.mediaDevices?.getUserMedia) {
@@ -756,27 +951,56 @@ function App() {
   return (
     <div className="app-shell">
       <div className="phone">
-        <header className="header">
+        <header className="header slim-header">
           <div className="header-top">
             <div>
               <p className="eyebrow">Training & Nutrition</p>
-              <h1>Мой фитнес-дневник</h1>
+              <h1>{profile.name ? `${profile.name}, план на день` : "Мой фитнес-дневник"}</h1>
             </div>
             <div className="logo"><HeartPulse /></div>
           </div>
-
-          <div className="tabs four-tabs">
-            <TabButton active={tab === "today"} onClick={() => setTab("today")} icon={Dumbbell} label="Трен" />
-            <TabButton active={tab === "history"} onClick={() => setTab("history")} icon={History} label="История" />
-            <TabButton active={tab === "profile"} onClick={() => setTab("profile")} icon={UserRound} label="Профиль" />
-            <TabButton active={tab === "nutrition"} onClick={() => setTab("nutrition")} icon={Utensils} label="Питание" />
-          </div>
         </header>
 
-        <main className="main">
-          {tab === "today" && (
+        <main className="main with-bottom-nav">
+          {tab === "dashboard" && (
+            <DashboardScreen
+              selectedDate={selectedDate}
+              setSelectedDate={setSelectedDate}
+              profile={profile}
+              nutritionPlan={nutritionPlan}
+              dayNutrition={dayNutrition}
+              dayWorkoutSummary={dayWorkoutSummary}
+              dateEntries={dateEntries}
+              groupedNutrition={groupedNutrition}
+              weightLog={weightLog}
+              setTab={setTab}
+              addSampleMenu={addSampleMenu}
+              startRestTimer={startRestTimer}
+            />
+          )}
+
+          {tab === "training" && (
             <section className="screen stack">
               <DateCard selectedDate={selectedDate} setSelectedDate={setSelectedDate} />
+              <RestTimerCard restTimer={restTimer} setRestTimer={setRestTimer} startRestTimer={startRestTimer} pauseRestTimer={pauseRestTimer} resetRestTimer={resetRestTimer} />
+
+              <div className="card stack">
+                <div className="section-head">
+                  <div>
+                    <h2>Шаблоны тренировок</h2>
+                    <p>Добавляют готовый план на выбранную дату</p>
+                  </div>
+                  <ClipboardList className="muted-icon" />
+                </div>
+                <div className="template-grid">
+                  {workoutTemplates.map((template) => (
+                    <button key={template.id} type="button" className="template-card" onClick={() => applyTemplate(template)}>
+                      <strong>{template.name}</strong>
+                      <span>{template.detail}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
 
               <form onSubmit={addWorkoutEntry} className="card stack">
                 <div className="section-head">
@@ -784,9 +1008,7 @@ function App() {
                     <h2>Добавить упражнение</h2>
                     <p>Силовые и кардио сохраняются в одном дневнике</p>
                   </div>
-                  <button type="button" className="icon-button" onClick={() => setWorkoutForm(emptyWorkoutForm())} aria-label="Очистить форму">
-                    <X size={18} />
-                  </button>
+                  <button type="button" className="icon-button" onClick={() => setWorkoutForm(emptyWorkoutForm())} aria-label="Очистить форму"><X size={18} /></button>
                 </div>
 
                 <div className="segmented">
@@ -807,9 +1029,7 @@ function App() {
                   />
                   {showSuggestions && suggestions.length > 0 && (
                     <div className="dropdown">
-                      {suggestions.map((name) => (
-                        <button key={name} type="button" onClick={() => selectSuggestion(name)}>{name}</button>
-                      ))}
+                      {suggestions.map((name) => <button key={name} type="button" onClick={() => selectSuggestion(name)}>{name}</button>)}
                     </div>
                   )}
                 </div>
@@ -817,7 +1037,7 @@ function App() {
                 {workoutForm.type === "cardio" ? (
                   <div className="stack">
                     <div className="info-card compact-info">
-                      <span>{cardioProfile?.icon || "🔥"}</span>
+                      <span>{activeCardioProfile?.icon || "🔥"}</span>
                       <div>
                         <strong>{resolvedCardioName || "Кардио"}</strong>
                         <p>Ккал считаются по весу из профиля: {profile.weightKg || 70} кг</p>
@@ -827,15 +1047,13 @@ function App() {
                     <div className="field">
                       <label>Сложность / настройка</label>
                       <select value={workoutForm.intensityId || selectedIntensity?.id || ""} onChange={(event) => setWorkoutField("intensityId", event.target.value)}>
-                        {cardioProfile?.intensities.map((item) => (
-                          <option key={item.id} value={item.id}>{item.label} · MET {item.met}</option>
-                        ))}
+                        {activeCardioProfile?.intensities.map((item) => <option key={item.id} value={item.id}>{item.label} · MET {item.met}</option>)}
                       </select>
                     </div>
 
                     <div className="grid-2">
                       <NumberField label="Время, мин" value={workoutForm.duration} onChange={(value) => setWorkoutField("duration", value)} />
-                      <NumberField label="Дистанция, км" value={workoutForm.distance || cardioProfile?.defaultDistance || ""} onChange={(value) => setWorkoutField("distance", value)} />
+                      <NumberField label="Дистанция, км" value={workoutForm.distance || activeCardioProfile?.defaultDistance || ""} onChange={(value) => setWorkoutField("distance", value)} />
                     </div>
                     <div className="grid-2">
                       <NumberField label="Ккал вручную" value={workoutForm.calories} onChange={(value) => setWorkoutField("calories", value)} placeholder={String(estimatedWorkoutCalories)} />
@@ -852,287 +1070,537 @@ function App() {
 
                 <div className="field">
                   <label>Заметка</label>
-                  <textarea
-                    value={workoutForm.note}
-                    onChange={(event) => setWorkoutField("note", event.target.value)}
-                    placeholder="Например: увеличить вес на следующей тренировке"
-                    rows={3}
-                  />
+                  <textarea value={workoutForm.note} onChange={(event) => setWorkoutField("note", event.target.value)} placeholder="Например: увеличить вес на следующей тренировке" rows={3} />
                 </div>
 
                 <button className="primary-button" type="submit"><Plus size={19} /> Добавить</button>
               </form>
 
-              <section className="stack">
-                <div className="section-head inline">
-                  <h2>{formatDate(selectedDate)}</h2>
-                  <span className="pill">{dateEntries.length} записей</span>
-                </div>
-                {dateEntries.length === 0 ? (
-                  <EmptyState text="За этот день пока нет упражнений." />
-                ) : (
-                  <div className="stack small-gap">
-                    {dateEntries.map((entry) => <ExerciseCard key={entry.id} entry={entry} onDelete={() => deleteWorkoutEntry(entry.id)} />)}
-                  </div>
-                )}
-              </section>
-            </section>
-          )}
-
-          {tab === "history" && (
-            <section className="screen stack">
-              <div className="search-box">
-                <Search size={20} />
-                <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Найти упражнение" />
-              </div>
-              {sortedHistoryDates.length === 0 ? (
-                <EmptyState text="История пустая. После первой тренировки записи появятся здесь." />
-              ) : (
-                sortedHistoryDates.map((date) => (
-                  <section key={date} className="stack small-gap">
-                    <h2 className="date-title">{formatDate(date)}</h2>
-                    {groupedHistory[date]
-                      .sort((a, b) => b.createdAt - a.createdAt)
-                      .map((entry) => <ExerciseCard key={entry.id} entry={entry} onDelete={() => deleteWorkoutEntry(entry.id)} compact />)}
-                  </section>
-                ))
-              )}
-            </section>
-          )}
-
-          {tab === "profile" && (
-            <section className="screen stack">
-              <div className="card stack">
-                <div className="section-head">
-                  <div>
-                    <h2>Профиль</h2>
-                    <p>Эти данные нужны для ккал, БЖУ и графика веса</p>
-                  </div>
-                  <UserRound className="muted-icon" />
-                </div>
-
-                <div className="field">
-                  <label>Имя</label>
-                  <input value={profile.name} onChange={(event) => updateProfile("name", event.target.value)} placeholder="Например: Мария" />
-                </div>
-
-                <div className="grid-2">
-                  <div className="field">
-                    <label>Пол</label>
-                    <select value={profile.sex} onChange={(event) => updateProfile("sex", event.target.value)}>
-                      <option value="female">Женский</option>
-                      <option value="male">Мужской</option>
-                    </select>
-                  </div>
-                  <NumberField label="Возраст" value={profile.age} onChange={(value) => updateProfile("age", value)} />
-                </div>
-
-                <div className="grid-3">
-                  <NumberField label="Рост, см" value={profile.heightCm} onChange={(value) => updateProfile("heightCm", value)} />
-                  <NumberField label="Вес, кг" value={profile.weightKg} onChange={(value) => updateProfile("weightKg", value)} />
-                  <NumberField label="Цель, кг" value={profile.targetWeightKg} onChange={(value) => updateProfile("targetWeightKg", value)} />
-                </div>
-
-                <div className="field">
-                  <label>Активность</label>
-                  <select value={profile.activityLevel} onChange={(event) => updateProfile("activityLevel", event.target.value)}>
-                    {activityLevels.map((level) => <option key={level.value} value={level.value}>{level.label} · {level.detail}</option>)}
-                  </select>
-                </div>
-
-                <NumberField
-                  label="План изменения веса, кг/нед."
-                  value={profile.weeklyChangeKg}
-                  onChange={(value) => updateProfile("weeklyChangeKg", value)}
-                />
-              </div>
-
-              <div className="grid-2">
-                <StatCard icon={Calculator} label="BMR" value={`${nutritionPlan.bmr || 0}`} suffix="ккал" />
-                <StatCard icon={Flame} label="TDEE" value={`${nutritionPlan.tdee || 0}`} suffix="ккал" />
-                <StatCard icon={Activity} label="Цель питания" value={`${nutritionPlan.targetCalories || 0}`} suffix="ккал" />
-                <StatCard icon={Weight} label="BMI" value={bmi ? round(bmi, 1) : "—"} suffix={bmiCategory(bmi)} />
-              </div>
-
-              <div className="card stack">
-                <div className="section-head">
-                  <div>
-                    <h2>Цель по БЖУ</h2>
-                    <p>Автоматический ориентир на день</p>
-                  </div>
-                  <Apple className="muted-icon" />
-                </div>
-                <div className="macro-row">
-                  <MacroChip label="Белки" value={nutritionPlan.protein} unit="г" />
-                  <MacroChip label="Жиры" value={nutritionPlan.fat} unit="г" />
-                  <MacroChip label="Углеводы" value={nutritionPlan.carbs} unit="г" />
-                </div>
-                <p className="hint">
-                  Это расчетный ориентир, не медицинское назначение. При заболеваниях, беременности, РПП или приеме препаратов питание лучше согласовывать со специалистом.
-                </p>
-              </div>
-
-              <div className="card stack">
-                <div className="section-head">
-                  <div>
-                    <h2>График веса</h2>
-                    <p>Смотри тренд, а не случайные колебания воды</p>
-                  </div>
-                  <LineChart className="muted-icon" />
-                </div>
-                <form onSubmit={addWeightRecord} className="grid-3 align-end">
-                  <div className="field grid-span-1">
-                    <label>Дата</label>
-                    <input type="date" value={weightForm.date} onChange={(event) => setWeightForm((current) => ({ ...current, date: event.target.value }))} />
-                  </div>
-                  <NumberField label="Вес" value={weightForm.weightKg} onChange={(value) => setWeightForm((current) => ({ ...current, weightKg: value }))} placeholder={profile.weightKg} />
-                  <button className="mini-primary" type="submit"><Plus size={18} /></button>
-                </form>
-                <WeightChart data={weightLog} targetWeight={profile.targetWeightKg} />
-                {trend ? (
-                  <div className="trend-box">
-                    <p><strong>{trend.delta > 0 ? "+" : ""}{round(trend.delta, 1)} кг</strong> за {trend.days} дн.</p>
-                    <p>Темп: <strong>{trend.kgPerWeek > 0 ? "+" : ""}{round(trend.kgPerWeek, 2)} кг/нед.</strong></p>
-                    <p>Средний энергетический сдвиг: ~{trend.caloriesPerDay} ккал/день.</p>
-                    {trend.weeksToGoal ? <p>До цели при текущем темпе: ~{Math.ceil(trend.weeksToGoal)} нед.</p> : <p>Текущий тренд пока не ведет к цели или данных мало.</p>}
-                  </div>
-                ) : (
-                  <p className="hint">Добавь минимум две записи веса в разные даты, чтобы увидеть темп изменения.</p>
-                )}
-                <div className="weight-list">
-                  {weightLog.slice(0, 5).map((item) => (
-                    <div key={item.id} className="mini-row">
-                      <span>{formatDate(item.date)}</span>
-                      <strong>{item.weightKg} кг</strong>
-                      <button type="button" onClick={() => deleteWeightRecord(item.id)}><Trash2 size={15} /></button>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              <WorkoutList selectedDate={selectedDate} dateEntries={dateEntries} deleteWorkoutEntry={deleteWorkoutEntry} startRestTimer={startRestTimer} />
             </section>
           )}
 
           {tab === "nutrition" && (
-            <section className="screen stack">
-              <DateCard selectedDate={selectedDate} setSelectedDate={setSelectedDate} />
+            <NutritionScreen
+              selectedDate={selectedDate}
+              setSelectedDate={setSelectedDate}
+              nutritionPlan={nutritionPlan}
+              dayNutrition={dayNutrition}
+              groupedNutrition={groupedNutrition}
+              foodForm={foodForm}
+              setFoodForm={setFoodForm}
+              selectedFood={selectedFood}
+              selectFood={selectFood}
+              favoriteFoods={favoriteFoods}
+              applyFoodToForm={applyFoodToForm}
+              deleteFavoriteFood={deleteFavoriteFood}
+              foodPreview={foodPreview}
+              addNutritionEntry={addNutritionEntry}
+              saveCurrentFoodAsFavorite={saveCurrentFoodAsFavorite}
+              scanner={scanner}
+              videoRef={videoRef}
+              startScanner={startScanner}
+              stopScanner={stopScanner}
+              addSampleMenu={addSampleMenu}
+              copyYesterdayNutrition={copyYesterdayNutrition}
+              saveDayAsMenu={saveDayAsMenu}
+              savedMenus={savedMenus}
+              applySavedMenu={applySavedMenu}
+              deleteSavedMenu={deleteSavedMenu}
+              deleteNutritionEntry={deleteNutritionEntry}
+            />
+          )}
 
-              <div className="card stack nutrition-summary">
-                <div className="section-head">
-                  <div>
-                    <h2>Питание за день</h2>
-                    <p>Цель: {nutritionPlan.targetCalories} ккал</p>
-                  </div>
-                  <Utensils className="muted-icon" />
-                </div>
-                <ProgressBar value={dayNutrition.totals.calories} max={nutritionPlan.targetCalories} />
-                <div className="grid-4 compact-grid">
-                  <MacroChip label="Ккал" value={Math.round(dayNutrition.totals.calories)} unit="" target={nutritionPlan.targetCalories} />
-                  <MacroChip label="Белки" value={round(dayNutrition.totals.protein, 1)} unit="г" target={nutritionPlan.protein} />
-                  <MacroChip label="Жиры" value={round(dayNutrition.totals.fat, 1)} unit="г" target={nutritionPlan.fat} />
-                  <MacroChip label="Углев." value={round(dayNutrition.totals.carbs, 1)} unit="г" target={nutritionPlan.carbs} />
-                </div>
-              </div>
+          {tab === "progress" && (
+            <ProgressScreen
+              query={query}
+              setQuery={setQuery}
+              progressNames={progressNames}
+              progressExercise={progressExercise}
+              setProgressExercise={setProgressExercise}
+              selectedProgressEntries={selectedProgressEntries}
+              sortedHistoryDates={sortedHistoryDates}
+              groupedHistory={groupedHistory}
+              deleteWorkoutEntry={deleteWorkoutEntry}
+            />
+          )}
 
-              <form onSubmit={addNutritionEntry} className="card stack">
-                <div className="section-head">
-                  <div>
-                    <h2>Добавить продукт</h2>
-                    <p>Выбери из базы или введи данные с этикетки</p>
-                  </div>
-                  <Apple className="muted-icon" />
-                </div>
-
-                <div className="grid-2">
-                  <div className="field">
-                    <label>Приём пищи</label>
-                    <select value={foodForm.meal} onChange={(event) => setFoodForm((current) => ({ ...current, meal: event.target.value }))}>
-                      {meals.map((meal) => <option key={meal.id} value={meal.id}>{meal.label}</option>)}
-                    </select>
-                  </div>
-                  <NumberField label="Граммы" value={foodForm.grams} onChange={(value) => setFoodForm((current) => ({ ...current, grams: value }))} />
-                </div>
-
-                <div className="field">
-                  <label>Быстрая база</label>
-                  <select value={foodForm.foodId} onChange={(event) => selectFood(event.target.value)}>
-                    {foodDatabase.map((food) => <option key={food.id} value={food.id}>{food.name}</option>)}
-                  </select>
-                </div>
-
-                <details className="details-box">
-                  <summary>Ввести свой продукт / данные с этикетки</summary>
-                  <div className="stack details-content">
-                    <div className="field">
-                      <label>Название продукта</label>
-                      <input value={foodForm.name} onChange={(event) => setFoodForm((current) => ({ ...current, name: event.target.value }))} placeholder="Например: йогурт клубничный" />
-                    </div>
-                    <div className="grid-4 compact-grid">
-                      <NumberField label="Ккал/100г" value={foodForm.calories} onChange={(value) => setFoodForm((current) => ({ ...current, calories: value }))} />
-                      <NumberField label="Б/100г" value={foodForm.protein} onChange={(value) => setFoodForm((current) => ({ ...current, protein: value }))} />
-                      <NumberField label="Ж/100г" value={foodForm.fat} onChange={(value) => setFoodForm((current) => ({ ...current, fat: value }))} />
-                      <NumberField label="У/100г" value={foodForm.carbs} onChange={(value) => setFoodForm((current) => ({ ...current, carbs: value }))} />
-                    </div>
-                  </div>
-                </details>
-
-                <div className="info-card compact-info">
-                  <span>≈</span>
-                  <div>
-                    <strong>{foodPreview.calories} ккал</strong>
-                    <p>Б {foodPreview.protein} г · Ж {foodPreview.fat} г · У {foodPreview.carbs} г</p>
-                  </div>
-                </div>
-
-                <button className="primary-button" type="submit"><Plus size={19} /> Добавить продукт</button>
-              </form>
-
-              <div className="card stack">
-                <div className="section-head">
-                  <div>
-                    <h2>Сканер упаковки</h2>
-                    <p>Считывает штрихкод и ищет БЖУ в Open Food Facts</p>
-                  </div>
-                  <Camera className="muted-icon" />
-                </div>
-                {scanner.active && <video ref={videoRef} className="scanner-video" muted playsInline />}
-                <div className="grid-2">
-                  <button type="button" className="secondary-button" onClick={scanner.active ? stopScanner : startScanner}>
-                    <Camera size={18} /> {scanner.active ? "Остановить" : "Сканировать"}
-                  </button>
-                  <button type="button" className="secondary-button" onClick={addSampleMenu}>
-                    <Utensils size={18} /> Меню на день
-                  </button>
-                </div>
-                {scanner.message && <p className="hint">{scanner.message}</p>}
-                <p className="hint">Камера работает только на HTTPS или localhost. По фото тарелки точность ограничена: без веса порции приложение не знает реальное количество граммов.</p>
-              </div>
-
-              <section className="stack">
-                {meals.map((meal) => {
-                  const items = groupedNutrition[meal.id] || [];
-                  return (
-                    <div key={meal.id} className="card stack small-gap">
-                      <div className="section-head inline">
-                        <h2>{meal.label}</h2>
-                        <span className="pill">{items.reduce((sum, item) => sum + item.total.calories, 0)} ккал</span>
-                      </div>
-                      {items.length === 0 ? <p className="hint">Пока пусто.</p> : items.map((item) => (
-                        <FoodCard key={item.id} item={item} onDelete={() => deleteNutritionEntry(item.id)} />
-                      ))}
-                    </div>
-                  );
-                })}
-              </section>
-            </section>
+          {tab === "profile" && (
+            <ProfileScreen
+              profile={profile}
+              updateProfile={updateProfile}
+              nutritionPlan={nutritionPlan}
+              bmi={bmi}
+              trend={trend}
+              weightForm={weightForm}
+              setWeightForm={setWeightForm}
+              addWeightRecord={addWeightRecord}
+              weightLog={weightLog}
+              deleteWeightRecord={deleteWeightRecord}
+            />
           )}
         </main>
+
+        <nav className="bottom-nav">
+          <BottomNavButton active={tab === "dashboard"} onClick={() => setTab("dashboard")} icon={Home} label="Сегодня" />
+          <BottomNavButton active={tab === "training"} onClick={() => setTab("training")} icon={Dumbbell} label="Трен" />
+          <BottomNavButton active={tab === "nutrition"} onClick={() => setTab("nutrition")} icon={Utensils} label="Питание" />
+          <BottomNavButton active={tab === "progress"} onClick={() => setTab("progress")} icon={BarChart3} label="Прогресс" />
+          <BottomNavButton active={tab === "profile"} onClick={() => setTab("profile")} icon={UserRound} label="Профиль" />
+        </nav>
       </div>
     </div>
   );
 }
 
-function TabButton({ active, onClick, icon: Icon, label }) {
-  return <button onClick={onClick} className={`tab ${active ? "active" : ""}`}><Icon size={17} />{label}</button>;
+function DashboardScreen({ selectedDate, setSelectedDate, profile, nutritionPlan, dayNutrition, dayWorkoutSummary, dateEntries, groupedNutrition, weightLog, setTab, addSampleMenu, startRestTimer }) {
+  const caloriesLeft = nutritionPlan.targetCalories - dayNutrition.totals.calories;
+  const latestWeight = weightLog[0]?.weightKg || profile.weightKg;
+  const targetWeight = numeric(profile.targetWeightKg);
+  const currentWeight = numeric(latestWeight);
+  const weightDelta = targetWeight && currentWeight ? round(targetWeight - currentWeight, 1) : 0;
+
+  return (
+    <section className="screen stack">
+      <DateCard selectedDate={selectedDate} setSelectedDate={setSelectedDate} />
+
+      <div className="hero-card">
+        <div>
+          <p className="eyebrow">Сегодня</p>
+          <h2>{profile.name ? `${profile.name}, держим курс` : "План на день"}</h2>
+          <p>Открой приложение, быстро проверь питание, тренировку и вес — без лишних вкладок.</p>
+        </div>
+        <div className="hero-ring">
+          <strong>{Math.max(0, Math.min(100, Math.round((dayNutrition.totals.calories / Math.max(1, nutritionPlan.targetCalories)) * 100)))}%</strong>
+          <span>ккал</span>
+        </div>
+      </div>
+
+      <div className="dashboard-grid">
+        <SummaryTile icon={Utensils} label="Осталось" value={`${Math.round(caloriesLeft)} ккал`} detail={`съедено ${Math.round(dayNutrition.totals.calories)}`} tone={caloriesLeft >= 0 ? "good" : "warn"} />
+        <SummaryTile icon={Dumbbell} label="Тренировка" value={`${dateEntries.length} записей`} detail={`${dayWorkoutSummary.minutes} мин кардио`} />
+        <SummaryTile icon={Flame} label="Сожжено" value={`${dayWorkoutSummary.cardioCalories} ккал`} detail="по кардио" tone="hot" />
+        <SummaryTile icon={Target} label="Вес" value={`${latestWeight || "—"} кг`} detail={weightDelta ? `до цели ${weightDelta > 0 ? "+" : ""}${weightDelta} кг` : "цель задана"} />
+      </div>
+
+      <div className="card stack">
+        <div className="section-head">
+          <div>
+            <h2>Быстрые действия</h2>
+            <p>Самые частые сценарии — в один тап</p>
+          </div>
+          <ListPlus className="muted-icon" />
+        </div>
+        <div className="quick-actions">
+          <button type="button" onClick={() => setTab("training")}><Dumbbell size={18} /> Добавить тренировку</button>
+          <button type="button" onClick={() => setTab("nutrition")}><Apple size={18} /> Добавить еду</button>
+          <button type="button" onClick={addSampleMenu}><Utensils size={18} /> Меню на день</button>
+          <button type="button" onClick={() => startRestTimer(90)}><Timer size={18} /> Таймер 90с</button>
+        </div>
+      </div>
+
+      <div className="grid-2 dashboard-panels">
+        <div className="card stack small-gap">
+          <div className="section-head inline"><h2>Тренировка</h2><button className="tiny-link" onClick={() => setTab("training")}>Открыть</button></div>
+          {dateEntries.length ? dateEntries.slice(0, 3).map((entry) => <MiniWorkoutRow key={entry.id} entry={entry} />) : <p className="hint">Пока нет упражнений за день.</p>}
+        </div>
+        <div className="card stack small-gap">
+          <div className="section-head inline"><h2>Питание</h2><button className="tiny-link" onClick={() => setTab("nutrition")}>Открыть</button></div>
+          {meals.map((meal) => {
+            const items = groupedNutrition[meal.id] || [];
+            const calories = items.reduce((sum, item) => sum + item.total.calories, 0);
+            return <MiniMealRow key={meal.id} label={meal.label} calories={calories} count={items.length} />;
+          })}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function RestTimerCard({ restTimer, setRestTimer, startRestTimer, pauseRestTimer, resetRestTimer }) {
+  const minutes = Math.floor(restTimer.left / 60);
+  const seconds = restTimer.left % 60;
+  const percent = restTimer.seconds ? Math.max(0, Math.min(100, Math.round((restTimer.left / restTimer.seconds) * 100))) : 0;
+
+  return (
+    <div className="card rest-card">
+      <div className="section-head">
+        <div>
+          <h2>Таймер отдыха</h2>
+          <p>Запускай после подхода, чтобы не передерживать паузу</p>
+        </div>
+        <Timer className="muted-icon" />
+      </div>
+      <div className="timer-face">
+        <strong>{minutes}:{String(seconds).padStart(2, "0")}</strong>
+        <span>осталось</span>
+        <div className="timer-bar"><i style={{ width: `${percent}%` }} /></div>
+      </div>
+      <div className="timer-presets">
+        {[60, 90, 120, 180].map((secondsValue) => (
+          <button key={secondsValue} type="button" className={restTimer.seconds === secondsValue ? "active" : ""} onClick={() => setRestTimer({ seconds: secondsValue, left: secondsValue, running: false })}>{secondsValue / 60}м</button>
+        ))}
+      </div>
+      <div className="grid-3">
+        <button type="button" className="secondary-button" onClick={() => startRestTimer(restTimer.seconds)}><Play size={18} /> Старт</button>
+        <button type="button" className="secondary-button" onClick={pauseRestTimer}><Pause size={18} /> Пауза</button>
+        <button type="button" className="secondary-button" onClick={resetRestTimer}><RotateCcw size={18} /> Сброс</button>
+      </div>
+    </div>
+  );
+}
+
+function WorkoutList({ selectedDate, dateEntries, deleteWorkoutEntry, startRestTimer }) {
+  return (
+    <section className="stack">
+      <div className="section-head inline">
+        <h2>{formatDate(selectedDate)}</h2>
+        <span className="pill">{dateEntries.length} записей</span>
+      </div>
+      {dateEntries.length === 0 ? (
+        <EmptyState text="За этот день пока нет упражнений." />
+      ) : (
+        <div className="stack small-gap">
+          {dateEntries.map((entry) => <ExerciseCard key={entry.id} entry={entry} onDelete={() => deleteWorkoutEntry(entry.id)} onRest={() => startRestTimer(90)} />)}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function NutritionScreen({
+  selectedDate,
+  setSelectedDate,
+  nutritionPlan,
+  dayNutrition,
+  groupedNutrition,
+  foodForm,
+  setFoodForm,
+  selectedFood,
+  selectFood,
+  favoriteFoods,
+  applyFoodToForm,
+  deleteFavoriteFood,
+  foodPreview,
+  addNutritionEntry,
+  saveCurrentFoodAsFavorite,
+  scanner,
+  videoRef,
+  startScanner,
+  stopScanner,
+  addSampleMenu,
+  copyYesterdayNutrition,
+  saveDayAsMenu,
+  savedMenus,
+  applySavedMenu,
+  deleteSavedMenu,
+  deleteNutritionEntry,
+}) {
+  return (
+    <section className="screen stack">
+      <DateCard selectedDate={selectedDate} setSelectedDate={setSelectedDate} />
+
+      <div className="card stack nutrition-summary">
+        <div className="section-head">
+          <div>
+            <h2>Питание за день</h2>
+            <p>Цель: {nutritionPlan.targetCalories} ккал</p>
+          </div>
+          <Utensils className="muted-icon" />
+        </div>
+        <ProgressBar value={dayNutrition.totals.calories} max={nutritionPlan.targetCalories} />
+        <div className="grid-4 compact-grid">
+          <MacroChip label="Ккал" value={Math.round(dayNutrition.totals.calories)} unit="" target={nutritionPlan.targetCalories} />
+          <MacroChip label="Белки" value={round(dayNutrition.totals.protein, 1)} unit="г" target={nutritionPlan.protein} />
+          <MacroChip label="Жиры" value={round(dayNutrition.totals.fat, 1)} unit="г" target={nutritionPlan.fat} />
+          <MacroChip label="Углев." value={round(dayNutrition.totals.carbs, 1)} unit="г" target={nutritionPlan.carbs} />
+        </div>
+      </div>
+
+      <div className="card stack">
+        <div className="section-head">
+          <div>
+            <h2>Ускорители питания</h2>
+            <p>Копируй рацион, сохраняй меню и повторяй любимые продукты</p>
+          </div>
+          <Star className="muted-icon" />
+        </div>
+        <div className="grid-3">
+          <button type="button" className="secondary-button" onClick={copyYesterdayNutrition}><Copy size={18} /> Вчера</button>
+          <button type="button" className="secondary-button" onClick={saveDayAsMenu}><Save size={18} /> Сохранить</button>
+          <button type="button" className="secondary-button" onClick={addSampleMenu}><Utensils size={18} /> Меню</button>
+        </div>
+        {savedMenus.length > 0 && (
+          <div className="saved-menu-list">
+            {savedMenus.map((menu) => (
+              <div key={menu.id} className="saved-menu-row">
+                <button type="button" onClick={() => applySavedMenu(menu)}><strong>{menu.title}</strong><span>{menu.calories} ккал</span></button>
+                <button type="button" onClick={() => deleteSavedMenu(menu.id)} aria-label="Удалить меню"><Trash2 size={15} /></button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <form onSubmit={addNutritionEntry} className="card stack">
+        <div className="section-head">
+          <div>
+            <h2>Добавить продукт</h2>
+            <p>Выбери из базы, избранного или введи данные с этикетки</p>
+          </div>
+          <Apple className="muted-icon" />
+        </div>
+
+        {favoriteFoods.length > 0 && (
+          <div className="favorite-foods">
+            {favoriteFoods.map((food) => (
+              <div key={food.id} className="favorite-chip">
+                <button type="button" onClick={() => applyFoodToForm(food)}>{food.name}</button>
+                <button type="button" onClick={() => deleteFavoriteFood(food.id)} aria-label="Удалить из избранного"><X size={13} /></button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="grid-2">
+          <div className="field">
+            <label>Приём пищи</label>
+            <select value={foodForm.meal} onChange={(event) => setFoodForm((current) => ({ ...current, meal: event.target.value }))}>
+              {meals.map((meal) => <option key={meal.id} value={meal.id}>{meal.label}</option>)}
+            </select>
+          </div>
+          <NumberField label="Граммы" value={foodForm.grams} onChange={(value) => setFoodForm((current) => ({ ...current, grams: value }))} />
+        </div>
+
+        <div className="field">
+          <label>Быстрая база</label>
+          <select value={foodForm.foodId} onChange={(event) => selectFood(event.target.value)}>
+            {foodDatabase.map((food) => <option key={food.id} value={food.id}>{food.name}</option>)}
+          </select>
+        </div>
+
+        <details className="details-box">
+          <summary>Ввести свой продукт / данные с этикетки</summary>
+          <div className="stack details-content">
+            <div className="field">
+              <label>Название продукта</label>
+              <input value={foodForm.name} onChange={(event) => setFoodForm((current) => ({ ...current, name: event.target.value }))} placeholder="Например: йогурт клубничный" />
+            </div>
+            <div className="grid-4 compact-grid">
+              <NumberField label="Ккал/100г" value={foodForm.calories} onChange={(value) => setFoodForm((current) => ({ ...current, calories: value }))} />
+              <NumberField label="Б/100г" value={foodForm.protein} onChange={(value) => setFoodForm((current) => ({ ...current, protein: value }))} />
+              <NumberField label="Ж/100г" value={foodForm.fat} onChange={(value) => setFoodForm((current) => ({ ...current, fat: value }))} />
+              <NumberField label="У/100г" value={foodForm.carbs} onChange={(value) => setFoodForm((current) => ({ ...current, carbs: value }))} />
+            </div>
+          </div>
+        </details>
+
+        <div className="info-card compact-info">
+          <span>≈</span>
+          <div>
+            <strong>{foodPreview.calories} ккал</strong>
+            <p>Б {foodPreview.protein} г · Ж {foodPreview.fat} г · У {foodPreview.carbs} г</p>
+          </div>
+        </div>
+
+        <div className="grid-2">
+          <button className="primary-button" type="submit"><Plus size={19} /> Добавить</button>
+          <button className="secondary-button" type="button" onClick={saveCurrentFoodAsFavorite}><Star size={18} /> В избранное</button>
+        </div>
+      </form>
+
+      <div className="card stack">
+        <div className="section-head">
+          <div>
+            <h2>Сканер упаковки</h2>
+            <p>Считывает штрихкод и ищет БЖУ в Open Food Facts</p>
+          </div>
+          <Camera className="muted-icon" />
+        </div>
+        {scanner.active && <video ref={videoRef} className="scanner-video" muted playsInline />}
+        <button type="button" className="secondary-button" onClick={scanner.active ? stopScanner : startScanner}>
+          <Camera size={18} /> {scanner.active ? "Остановить" : "Сканировать"}
+        </button>
+        {scanner.message && <p className="hint">{scanner.message}</p>}
+        <p className="hint">Камера работает только на HTTPS или localhost. По фото тарелки точность ограничена: без веса порции приложение не знает реальное количество граммов.</p>
+      </div>
+
+      <section className="stack">
+        {meals.map((meal) => {
+          const items = groupedNutrition[meal.id] || [];
+          return (
+            <div key={meal.id} className="card stack small-gap">
+              <div className="section-head inline">
+                <h2>{meal.label}</h2>
+                <span className="pill">{items.reduce((sum, item) => sum + item.total.calories, 0)} ккал</span>
+              </div>
+              {items.length === 0 ? <p className="hint">Пока пусто.</p> : items.map((item) => <FoodCard key={item.id} item={item} onDelete={() => deleteNutritionEntry(item.id)} />)}
+            </div>
+          );
+        })}
+      </section>
+    </section>
+  );
+}
+
+function ProgressScreen({ query, setQuery, progressNames, progressExercise, setProgressExercise, selectedProgressEntries, sortedHistoryDates, groupedHistory, deleteWorkoutEntry }) {
+  const bestWeight = Math.max(0, ...selectedProgressEntries.filter((entry) => entry.type !== "cardio").map((entry) => numeric(entry.weight)));
+  const bestVolume = Math.max(0, ...selectedProgressEntries.map((entry) => volume(entry)));
+  const totalCardio = selectedProgressEntries.filter((entry) => entry.type === "cardio").reduce((sum, entry) => sum + numeric(entry.calories), 0);
+
+  return (
+    <section className="screen stack">
+      <div className="card stack">
+        <div className="section-head">
+          <div>
+            <h2>Прогресс упражнения</h2>
+            <p>Выбери упражнение и смотри динамику по датам</p>
+          </div>
+          <LineChart className="muted-icon" />
+        </div>
+        <div className="field">
+          <label>Упражнение</label>
+          <select value={progressExercise} onChange={(event) => setProgressExercise(event.target.value)}>
+            {progressNames.map((name) => <option key={name} value={name}>{name}</option>)}
+          </select>
+        </div>
+        <ExerciseProgressChart entries={selectedProgressEntries} />
+        <div className="grid-3">
+          <StatCard icon={History} label="Записей" value={selectedProgressEntries.length} />
+          <StatCard icon={Weight} label="Лучший вес" value={bestWeight || "—"} suffix={bestWeight ? "кг" : ""} />
+          <StatCard icon={Flame} label="Ккал кардио" value={totalCardio || "—"} />
+        </div>
+        {bestVolume > 0 && <p className="volume-line">Лучший силовой объём: <strong>{bestVolume.toLocaleString("ru-RU")} кг</strong></p>}
+      </div>
+
+      <div className="search-box">
+        <Search size={20} />
+        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Найти в истории тренировок" />
+      </div>
+      {sortedHistoryDates.length === 0 ? (
+        <EmptyState text="История пустая. После первой тренировки записи появятся здесь." />
+      ) : (
+        sortedHistoryDates.map((date) => (
+          <section key={date} className="stack small-gap">
+            <h2 className="date-title">{formatDate(date)}</h2>
+            {groupedHistory[date]
+              .sort((a, b) => b.createdAt - a.createdAt)
+              .map((entry) => <ExerciseCard key={entry.id} entry={entry} onDelete={() => deleteWorkoutEntry(entry.id)} compact />)}
+          </section>
+        ))
+      )}
+    </section>
+  );
+}
+
+function ProfileScreen({ profile, updateProfile, nutritionPlan, bmi, trend, weightForm, setWeightForm, addWeightRecord, weightLog, deleteWeightRecord }) {
+  return (
+    <section className="screen stack">
+      <div className="card stack">
+        <div className="section-head">
+          <div>
+            <h2>Профиль</h2>
+            <p>Эти данные нужны для ккал, БЖУ и графика веса</p>
+          </div>
+          <UserRound className="muted-icon" />
+        </div>
+
+        <div className="field">
+          <label>Имя</label>
+          <input value={profile.name} onChange={(event) => updateProfile("name", event.target.value)} placeholder="Например: Мария" />
+        </div>
+
+        <div className="grid-2">
+          <div className="field">
+            <label>Пол</label>
+            <select value={profile.sex} onChange={(event) => updateProfile("sex", event.target.value)}>
+              <option value="female">Женский</option>
+              <option value="male">Мужской</option>
+            </select>
+          </div>
+          <NumberField label="Возраст" value={profile.age} onChange={(value) => updateProfile("age", value)} />
+        </div>
+
+        <div className="grid-3">
+          <NumberField label="Рост, см" value={profile.heightCm} onChange={(value) => updateProfile("heightCm", value)} />
+          <NumberField label="Вес, кг" value={profile.weightKg} onChange={(value) => updateProfile("weightKg", value)} />
+          <NumberField label="Цель, кг" value={profile.targetWeightKg} onChange={(value) => updateProfile("targetWeightKg", value)} />
+        </div>
+
+        <div className="field">
+          <label>Активность</label>
+          <select value={profile.activityLevel} onChange={(event) => updateProfile("activityLevel", event.target.value)}>
+            {activityLevels.map((level) => <option key={level.value} value={level.value}>{level.label} · {level.detail}</option>)}
+          </select>
+        </div>
+
+        <NumberField label="План изменения веса, кг/нед." value={profile.weeklyChangeKg} onChange={(value) => updateProfile("weeklyChangeKg", value)} />
+      </div>
+
+      <div className="grid-2">
+        <StatCard icon={Calculator} label="BMR" value={`${nutritionPlan.bmr || 0}`} suffix="ккал" />
+        <StatCard icon={Flame} label="TDEE" value={`${nutritionPlan.tdee || 0}`} suffix="ккал" />
+        <StatCard icon={Activity} label="Цель питания" value={`${nutritionPlan.targetCalories || 0}`} suffix="ккал" />
+        <StatCard icon={Weight} label="BMI" value={bmi ? round(bmi, 1) : "—"} suffix={bmiCategory(bmi)} />
+      </div>
+
+      <div className="card stack">
+        <div className="section-head">
+          <div>
+            <h2>Цель по БЖУ</h2>
+            <p>Автоматический ориентир на день</p>
+          </div>
+          <Apple className="muted-icon" />
+        </div>
+        <div className="macro-row">
+          <MacroChip label="Белки" value={nutritionPlan.protein} unit="г" />
+          <MacroChip label="Жиры" value={nutritionPlan.fat} unit="г" />
+          <MacroChip label="Углеводы" value={nutritionPlan.carbs} unit="г" />
+        </div>
+        <p className="hint">Это расчетный ориентир, не медицинское назначение. При заболеваниях, беременности, РПП или приеме препаратов питание лучше согласовывать со специалистом.</p>
+      </div>
+
+      <div className="card stack">
+        <div className="section-head">
+          <div>
+            <h2>График веса</h2>
+            <p>Смотри тренд, а не случайные колебания воды</p>
+          </div>
+          <LineChart className="muted-icon" />
+        </div>
+        <form onSubmit={addWeightRecord} className="grid-3 align-end">
+          <div className="field">
+            <label>Дата</label>
+            <input type="date" value={weightForm.date} onChange={(event) => setWeightForm((current) => ({ ...current, date: event.target.value }))} />
+          </div>
+          <NumberField label="Вес, кг" value={weightForm.weightKg} onChange={(value) => setWeightForm((current) => ({ ...current, weightKg: value }))} placeholder={profile.weightKg} />
+          <button className="mini-primary" type="submit"><Plus size={18} /></button>
+        </form>
+        <WeightChart data={weightLog} targetWeight={profile.targetWeightKg} />
+        {trend ? (
+          <div className="trend-box">
+            <p><strong>{trend.delta > 0 ? "+" : ""}{round(trend.delta, 1)} кг</strong> за {trend.days} дн.</p>
+            <p>Темп: <strong>{trend.kgPerWeek > 0 ? "+" : ""}{round(trend.kgPerWeek, 2)} кг/нед.</strong></p>
+            <p>Средний энергетический сдвиг: ~{trend.caloriesPerDay} ккал/день.</p>
+            {trend.weeksToGoal ? <p>До цели при текущем темпе: ~{Math.ceil(trend.weeksToGoal)} нед.</p> : <p>Текущий тренд пока не ведет к цели или данных мало.</p>}
+          </div>
+        ) : <p className="hint">Добавь минимум две записи веса в разные даты, чтобы увидеть темп изменения.</p>}
+        <div className="weight-list">
+          {weightLog.slice(0, 8).map((item) => (
+            <div key={item.id} className="mini-row">
+              <span>{formatDate(item.date)}</span>
+              <strong>{item.weightKg} кг</strong>
+              <button type="button" onClick={() => deleteWeightRecord(item.id)}><Trash2 size={15} /></button>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function BottomNavButton({ active, onClick, icon: Icon, label }) {
+  return <button onClick={onClick} className={`bottom-tab ${active ? "active" : ""}`}><Icon size={19} /><span>{label}</span></button>;
 }
 
 function DateCard({ selectedDate, setSelectedDate }) {
@@ -1162,17 +1630,14 @@ function ReadOnlyMetric({ label, value }) {
   );
 }
 
-function ExerciseCard({ entry, onDelete, compact = false }) {
+function ExerciseCard({ entry, onDelete, onRest, compact = false }) {
   const isCardio = entry.type === "cardio";
   const currentVolume = volume(entry);
   return (
     <article className="exercise-card">
       <div className="card-top">
         <div>
-          <div className="type-line">
-            <span className={`type-dot ${isCardio ? "cardio" : "strength"}`} />
-            {isCardio ? "Кардио" : "Силовое"}
-          </div>
+          <div className="type-line"><span className={`type-dot ${isCardio ? "cardio" : "strength"}`} />{isCardio ? "Кардио" : "Силовое"}</div>
           <h3>{entry.name}</h3>
           {!compact && entry.note && <p className="entry-note">{entry.note}</p>}
         </div>
@@ -1196,6 +1661,7 @@ function ExerciseCard({ entry, onDelete, compact = false }) {
 
       {isCardio && entry.intensityLabel && <p className="hint tight">{entry.intensityLabel}</p>}
       {!isCardio && currentVolume > 0 && <p className="volume-line">Объём: <strong>{currentVolume.toLocaleString("ru-RU")} кг</strong></p>}
+      {!isCardio && onRest && <button type="button" className="rest-mini-button" onClick={onRest}><Timer size={15} /> Отдых 90с</button>}
     </article>
   );
 }
@@ -1221,6 +1687,17 @@ function StatCard({ icon: Icon, label, value, suffix }) {
   );
 }
 
+function SummaryTile({ icon: Icon, label, value, detail, tone }) {
+  return (
+    <div className={`summary-tile ${tone || ""}`}>
+      <Icon size={19} />
+      <span>{label}</span>
+      <strong>{value}</strong>
+      <small>{detail}</small>
+    </div>
+  );
+}
+
 function MacroChip({ label, value, unit, target }) {
   return (
     <div className="macro-chip">
@@ -1242,13 +1719,8 @@ function ProgressBar({ value, max }) {
 }
 
 function WeightChart({ data, targetWeight }) {
-  const points = [...data]
-    .filter((item) => numeric(item.weightKg) > 0)
-    .sort((a, b) => a.date.localeCompare(b.date));
-
-  if (points.length < 2) {
-    return <div className="chart-empty">Недостаточно данных для графика</div>;
-  }
+  const points = [...data].filter((item) => numeric(item.weightKg) > 0).sort((a, b) => a.date.localeCompare(b.date));
+  if (points.length < 2) return <div className="chart-empty">Недостаточно данных для графика</div>;
 
   const width = 320;
   const height = 170;
@@ -1260,7 +1732,6 @@ function WeightChart({ data, targetWeight }) {
   const firstDate = new Date(points[0].date + "T12:00:00").getTime();
   const lastDate = new Date(points[points.length - 1].date + "T12:00:00").getTime();
   const span = Math.max(1, lastDate - firstDate);
-
   const coords = points.map((item) => {
     const x = padding + ((new Date(item.date + "T12:00:00").getTime() - firstDate) / span) * (width - padding * 2);
     const y = height - padding - ((numeric(item.weightKg) - min) / (max - min)) * (height - padding * 2);
@@ -1283,6 +1754,39 @@ function WeightChart({ data, targetWeight }) {
   );
 }
 
+function ExerciseProgressChart({ entries }) {
+  const points = [...entries].sort((a, b) => a.date.localeCompare(b.date));
+  if (points.length < 2) return <div className="chart-empty">Недостаточно данных по упражнению</div>;
+
+  const width = 320;
+  const height = 160;
+  const padding = 26;
+  const values = points.map((entry) => entry.type === "cardio" ? numeric(entry.calories) || numeric(entry.duration) : numeric(entry.weight) || volume(entry));
+  const min = Math.min(...values, 0);
+  const max = Math.max(...values, 1);
+  const firstDate = new Date(points[0].date + "T12:00:00").getTime();
+  const lastDate = new Date(points[points.length - 1].date + "T12:00:00").getTime();
+  const span = Math.max(1, lastDate - firstDate);
+  const coords = points.map((entry, index) => {
+    const value = values[index];
+    const x = padding + ((new Date(entry.date + "T12:00:00").getTime() - firstDate) / span) * (width - padding * 2);
+    const y = height - padding - ((value - min) / Math.max(1, max - min)) * (height - padding * 2);
+    return { x, y, id: entry.id, value };
+  });
+  const path = coords.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`).join(" ");
+
+  return (
+    <svg className="weight-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="График прогресса упражнения">
+      <line x1={padding} y1={height - padding} x2={width - padding} y2={height - padding} className="axis" />
+      <line x1={padding} y1={padding} x2={padding} y2={height - padding} className="axis" />
+      <path d={path} className="weight-path" />
+      {coords.map((point) => <circle key={point.id} cx={point.x} cy={point.y} r="4" className="weight-point" />)}
+      <text x={padding} y={18} className="chart-label">max {round(max, 1)}</text>
+      <text x={padding} y={height - 6} className="chart-label">min {round(min, 1)}</text>
+    </svg>
+  );
+}
+
 function FoodCard({ item, onDelete }) {
   const mealLabel = meals.find((meal) => meal.id === item.meal)?.label || "Еда";
   return (
@@ -1298,6 +1802,30 @@ function FoodCard({ item, onDelete }) {
         <button onClick={onDelete} aria-label="Удалить"><Trash2 size={15} /></button>
       </div>
     </article>
+  );
+}
+
+function MiniWorkoutRow({ entry }) {
+  return (
+    <div className="mini-summary-row">
+      <span>{entry.type === "cardio" ? "🔥" : "💪"}</span>
+      <div>
+        <strong>{entry.name}</strong>
+        <small>{entry.type === "cardio" ? `${entry.duration} мин · ${entry.calories} ккал` : `${entry.sets}×${entry.reps}${entry.weight ? ` · ${entry.weight} кг` : ""}`}</small>
+      </div>
+    </div>
+  );
+}
+
+function MiniMealRow({ label, calories, count }) {
+  return (
+    <div className="mini-summary-row">
+      <span>🍽️</span>
+      <div>
+        <strong>{label}</strong>
+        <small>{count ? `${calories} ккал · ${count} записей` : "пока пусто"}</small>
+      </div>
+    </div>
   );
 }
 
