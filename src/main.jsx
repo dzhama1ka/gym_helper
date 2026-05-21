@@ -3186,9 +3186,13 @@ function BottomNavButton({ active, onClick, icon: Icon, label }) {
 }
 
 function DateCard({ selectedDate, setSelectedDate }) {
+  return <DateInline selectedDate={selectedDate} setSelectedDate={setSelectedDate} label="Дата" />;
+}
+
+function DateInline({ selectedDate, setSelectedDate, label = "Дата" }) {
   return (
     <div className="card compact-card date-card-row">
-      <label className="date-label"><CalendarDays size={18} /> Дата</label>
+      <label className="date-label"><CalendarDays size={18} /> {label}</label>
       <label className="date-picker-shell" aria-label="Выбрать дату">
         <span>{formatShortDate(selectedDate)}</span>
         <input type="date" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} />
