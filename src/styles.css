@@ -2004,3 +2004,208 @@ button:disabled {
     justify-self: start;
   }
 }
+
+.profile-editor-actions,
+.auth-action-row {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+@media (min-width: 560px) {
+  .profile-editor-actions,
+  .auth-action-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: stretch;
+  }
+}
+
+.danger-button {
+  min-height: 46px;
+  border: 1px solid rgba(251, 113, 133, 0.28);
+  border-radius: 18px;
+  background: rgba(244, 63, 94, 0.1);
+  color: rgb(253, 164, 175);
+  font-weight: 800;
+  cursor: pointer;
+  transition: transform 0.18s ease, background 0.18s ease, border-color 0.18s ease;
+}
+
+.danger-button:active {
+  transform: scale(0.98);
+}
+
+.danger-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.error-boundary-screen {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+/* Stage 2 nutrition stabilization */
+.food-search-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.food-results-list,
+.user-food-list {
+  display: grid;
+  gap: 8px;
+  max-height: 340px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.food-result-row,
+.user-food-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: stretch;
+  gap: 8px;
+  border-radius: 18px;
+  padding: 7px;
+  background: rgba(15, 23, 42, 0.64);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.food-result-row.active {
+  border-color: rgba(103, 232, 249, 0.42);
+  background: rgba(103, 232, 249, 0.08);
+}
+
+.food-result-row > button,
+.user-food-row > button:first-child {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  text-align: left;
+  border-radius: 14px;
+  padding: 9px 10px;
+  background: transparent;
+  color: #e2e8f0;
+}
+
+.food-result-row strong,
+.food-result-row span,
+.user-food-row strong,
+.user-food-row span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.food-result-row span,
+.user-food-row span {
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.food-row-actions,
+.user-food-row {
+  align-items: center;
+}
+
+.food-row-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.food-row-actions button,
+.user-food-row > button:not(:first-child) {
+  min-height: 36px;
+  border-radius: 999px;
+  padding: 0 10px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #cbd5e1;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.food-row-actions button:last-child,
+.user-food-row > button:last-child {
+  color: #fda4af;
+  background: rgba(244, 63, 94, 0.1);
+}
+
+.selected-food-card,
+.edit-food-card {
+  border-radius: 22px;
+  padding: 14px;
+  background: linear-gradient(135deg, rgba(103, 232, 249, 0.12), rgba(255, 255, 255, 0.045));
+  border: 1px solid rgba(103, 232, 249, 0.18);
+}
+
+.selected-food-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+}
+
+.selected-food-main {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.selected-food-main h3 {
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+.selected-food-main p,
+.selected-food-main small {
+  color: #94a3b8;
+  font-size: 13px;
+}
+
+.selected-food-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.selected-food-actions button,
+.danger-text-button {
+  min-height: 38px;
+  border-radius: 999px;
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 900;
+  background: rgba(255, 255, 255, 0.08);
+  color: #cbd5e1;
+}
+
+.danger-text-button {
+  color: #fda4af !important;
+  background: rgba(244, 63, 94, 0.1) !important;
+}
+
+.auth-action-row.single {
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 720px) {
+  .selected-food-card {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+  }
+}
+
+@media (max-width: 420px) {
+  .food-result-row,
+  .user-food-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .food-row-actions {
+    justify-content: flex-start;
+  }
+}

@@ -50,7 +50,7 @@ const SAVED_MENUS_KEY = "mobile-workout-tracker-saved-menus-v1";
 const SCANNED_FOODS_KEY = "mobile-workout-tracker-scanned-foods-v1";
 const LAST_AUTH_USER_KEY = "mobile-workout-tracker-last-auth-user-v1";
 const CLOUD_TABLE = "app_state";
-const APP_STATE_VERSION = 10;
+const APP_STATE_VERSION = 11;
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "";
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
 const supabase = SUPABASE_URL && SUPABASE_ANON_KEY ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
@@ -902,7 +902,7 @@ function calculateBmr(profile) {
   const weight = numeric(profile.weightKg);
   const height = numeric(profile.heightCm);
   const age = numeric(profile.age);
-  if (!weight || !height || !age) return 0;
+  if (!weight || !height || !age || !profile.sex) return 0;
   const base = 10 * weight + 6.25 * height - 5 * age;
   return Math.round(profile.sex === "male" ? base + 5 : base - 161);
 }
@@ -1399,6 +1399,23 @@ function App() {
     }
   }
 
+  function clearLocalAppData() {
+    [
+      WORKOUT_KEY,
+      OLD_WORKOUT_KEY,
+      OLD_SETTINGS_KEY,
+      PROFILE_KEY,
+      WEIGHT_LOG_KEY,
+      NUTRITION_KEY,
+      FAVORITE_FOODS_KEY,
+      SAVED_MENUS_KEY,
+      SCANNED_FOODS_KEY,
+      LAST_AUTH_USER_KEY,
+    ].forEach((key) => localStorage.removeItem(key));
+    hasLocalDataRef.current = false;
+    applyAppState(createAppState({}));
+  }
+
   async function handleSignOut() {
     if (!supabase) return;
     setAuthLoading(true);
@@ -1407,7 +1424,8 @@ function App() {
       if (error) throw error;
       setSession(null);
       setCloudLoaded(false);
-      setCloudStatus("Вы вышли. Данные остаются локально на устройстве.");
+      clearLocalAppData();
+      setCloudStatus("Вы вышли. Локальные данные очищены, облачные данные аккаунта сохранены.");
     } catch (error) {
       setAuthMessage(error.message || "Не удалось выйти.");
     } finally {
@@ -1417,6 +1435,10 @@ function App() {
 
   function updateProfile(field, value) {
     setProfile((current) => ({ ...current, [field]: value }));
+  }
+
+  function saveProfile(nextProfile) {
+    setProfile({ ...defaultProfile, ...(nextProfile || {}) });
   }
 
   function setWorkoutField(field, value) {
@@ -1599,6 +1621,23 @@ function App() {
     });
   }
 
+  function saveCurrentFoodToGeneralList() {
+    const food = foodSource;
+    if (!food?.name || !numeric(food.calories)) return;
+    const saved = saveFoodToGeneralList(food, foodForm.grams, { source: "manual" });
+    if (!saved) return;
+    setFoodForm((current) => ({
+      ...current,
+      foodId: saved.id,
+      name: "",
+      calories: String(saved.calories),
+      protein: String(saved.protein),
+      fat: String(saved.fat),
+      carbs: String(saved.carbs),
+      grams: String(saved.defaultGrams || current.grams || 100),
+    }));
+  }
+
   function deleteFavoriteFood(id) {
     setFavoriteFoods((current) => current.filter((item) => item.id !== id));
   }
@@ -1617,6 +1656,42 @@ function App() {
         fat: String(fallback.fat),
         carbs: String(fallback.carbs),
         grams: String(fallback.defaultGrams || current.grams || 100),
+      };
+    });
+  }
+
+  function updateScannedFood(id, values) {
+    const name = String(values?.name || "").trim();
+    const calories = numeric(values?.calories);
+    if (!id || !name || !calories) return;
+
+    const updatedFood = {
+      id,
+      source: values.source || "manual",
+      code: values.code || "",
+      name,
+      calories,
+      protein: numeric(values.protein),
+      fat: numeric(values.fat),
+      carbs: numeric(values.carbs),
+      defaultGrams: numeric(values.defaultGrams, 100),
+      updatedAt: Date.now(),
+    };
+
+    setScannedFoods((current) => current.map((item) => (
+      item.id === id ? { ...item, ...updatedFood, createdAt: item.createdAt || Date.now() } : item
+    )));
+
+    setFoodForm((current) => {
+      if (current.foodId !== id) return current;
+      return {
+        ...current,
+        name: "",
+        calories: String(updatedFood.calories),
+        protein: String(updatedFood.protein),
+        fat: String(updatedFood.fat),
+        carbs: String(updatedFood.carbs),
+        grams: String(updatedFood.defaultGrams || current.grams || 100),
       };
     });
   }
@@ -2071,10 +2146,12 @@ function App() {
               applyFoodToForm={applyFoodToForm}
               deleteFavoriteFood={deleteFavoriteFood}
               deleteScannedFood={deleteScannedFood}
+              updateScannedFood={updateScannedFood}
               isSavedUserFood={isSavedUserFood}
               foodPreview={foodPreview}
               addNutritionEntry={addNutritionEntry}
               saveCurrentFoodAsFavorite={saveCurrentFoodAsFavorite}
+              saveCurrentFoodToGeneralList={saveCurrentFoodToGeneralList}
               scanner={scanner}
               videoRef={videoRef}
               startScanner={startScanner}
@@ -2096,6 +2173,7 @@ function App() {
             <ProfileScreen
               profile={profile}
               updateProfile={updateProfile}
+              saveProfile={saveProfile}
               nutritionPlan={nutritionPlan}
               bmi={bmi}
               trend={trend}
@@ -2277,10 +2355,12 @@ function NutritionScreen({
   applyFoodToForm,
   deleteFavoriteFood,
   deleteScannedFood,
+  updateScannedFood,
   isSavedUserFood,
   foodPreview,
   addNutritionEntry,
   saveCurrentFoodAsFavorite,
+  saveCurrentFoodToGeneralList,
   scanner,
   videoRef,
   startScanner,
@@ -2298,11 +2378,53 @@ function NutritionScreen({
   const [manualBarcode, setManualBarcode] = useState("");
   const [quickMenuTitle, setQuickMenuTitle] = useState("");
   const [builderTitle, setBuilderTitle] = useState("");
-  const [builderForm, setBuilderForm] = useState({ meal: "breakfast", foodId: "oatmeal", grams: "100" });
   const [builderItems, setBuilderItems] = useState([]);
+  const [builderForm, setBuilderForm] = useState({ foodId: commonFoodDatabase[0]?.id || "oatmeal", meal: "breakfast", grams: "100" });
+  const [foodSearch, setFoodSearch] = useState("");
+  const [editingFoodId, setEditingFoodId] = useState("");
+  const [editFoodForm, setEditFoodForm] = useState({ name: "", calories: "", protein: "", fat: "", carbs: "", defaultGrams: "100" });
 
   const builderFood = commonFoodDatabase.find((food) => food.id === builderForm.foodId) || commonFoodDatabase[0] || foodDatabase[0];
   const builderPreview = calculateFoodAmount(builderFood, builderForm.grams);
+  const savedUserFoods = commonFoodDatabase.filter((food) => isSavedUserFood(food.id));
+  const query = normalize(foodSearch);
+  const filteredFoods = useMemo(() => {
+    const list = commonFoodDatabase.filter((food) => {
+      if (!query) return true;
+      return [food.name, food.code, food.source].some((value) => normalize(value).includes(query));
+    });
+    return list.slice(0, 80);
+  }, [commonFoodDatabase, query]);
+
+  function submitManualBarcode() {
+    const code = manualBarcode.trim();
+    if (!code) return;
+    lookupBarcode(code).catch((error) => window.alert(error.message || "Не удалось найти продукт"));
+  }
+
+  function setEditField(field, value) {
+    setEditFoodForm((current) => ({ ...current, [field]: value }));
+  }
+
+  function startEditFood(food) {
+    if (!food || !isSavedUserFood(food.id)) return;
+    setEditingFoodId(food.id);
+    setEditFoodForm({
+      name: food.name || "",
+      calories: String(food.calories || ""),
+      protein: String(food.protein || ""),
+      fat: String(food.fat || ""),
+      carbs: String(food.carbs || ""),
+      defaultGrams: String(food.defaultGrams || 100),
+      source: food.source || "manual",
+      code: food.code || "",
+    });
+  }
+
+  function saveEditedFood() {
+    updateScannedFood(editingFoodId, editFoodForm);
+    setEditingFoodId("");
+  }
 
   function addBuilderItem() {
     const grams = numeric(builderForm.grams);
@@ -2330,74 +2452,70 @@ function NutritionScreen({
     setBuilderItems([]);
   }
 
-  async function submitManualBarcode() {
-    const code = manualBarcode.trim();
-    if (!code) return;
-    try {
-      await lookupBarcode(code);
-      setManualBarcode("");
-    } catch (error) {
-      console.error(error);
-    }
+  function chooseFood(food) {
+    selectFood(food.id);
+    setFoodSearch(food.name);
   }
+
+  const selectedFoodSource = selectedFood?.source === "scan" ? "Отсканированный" : selectedFood?.source === "manual" ? "Мой продукт" : "База";
+  const selectedIsUserFood = selectedFood && isSavedUserFood(selectedFood.id);
 
   return (
     <section className="screen stack">
-      <DateCard selectedDate={selectedDate} setSelectedDate={setSelectedDate} />
+      <DateInline selectedDate={selectedDate} setSelectedDate={setSelectedDate} label="День питания" />
 
-      <div className="card stack nutrition-summary">
+      <div className="card stack">
         <div className="section-head">
           <div>
-            <h2>Питание за день</h2>
-            <p>Цель: {nutritionPlan.targetCalories} ккал</p>
+            <h2>Питание сегодня</h2>
+            <p>{dayNutrition.totals.calories} из {nutritionPlan.targetCalories} ккал</p>
           </div>
           <Utensils className="muted-icon" />
         </div>
-        <ProgressBar value={dayNutrition.totals.calories} max={nutritionPlan.targetCalories} />
-        <div className="grid-4 compact-grid">
-          <MacroChip label="Ккал" value={Math.round(dayNutrition.totals.calories)} unit="" target={nutritionPlan.targetCalories} />
-          <MacroChip label="Белки" value={round(dayNutrition.totals.protein, 1)} unit="г" target={nutritionPlan.protein} />
-          <MacroChip label="Жиры" value={round(dayNutrition.totals.fat, 1)} unit="г" target={nutritionPlan.fat} />
-          <MacroChip label="Углев." value={round(dayNutrition.totals.carbs, 1)} unit="г" target={nutritionPlan.carbs} />
+        <div className="progress-bar"><span style={{ width: `${Math.min(100, (dayNutrition.totals.calories / Math.max(1, nutritionPlan.targetCalories)) * 100)}%` }} /></div>
+        <div className="macro-row">
+          <MacroChip label="Белки" value={dayNutrition.totals.protein} target={nutritionPlan.protein} />
+          <MacroChip label="Жиры" value={dayNutrition.totals.fat} target={nutritionPlan.fat} />
+          <MacroChip label="Углеводы" value={dayNutrition.totals.carbs} target={nutritionPlan.carbs} />
+        </div>
+        <div className="grid-2">
+          <button className="secondary-button" type="button" onClick={copyYesterdayNutrition}><Copy size={18} /> Со вчера</button>
+          <button className="secondary-button" type="button" onClick={addSampleMenu}><ClipboardList size={18} /> Меню на день</button>
         </div>
       </div>
 
-      <div className="card stack menu-presets-card">
-        <div className="section-head">
+      <div className="card stack">
+        <div className="section-head inline">
           <div>
             <h2>Пресеты меню</h2>
-            <p>Создавай рационы, повторяй готовые дни и собирай меню из продуктов</p>
+            <p>Сохраняй рационы и применяй их на выбранную дату</p>
           </div>
-          <Star className="muted-icon" />
+          <ListPlus className="muted-icon" />
         </div>
-        <div className="grid-3 menu-action-grid">
-          <button type="button" className="secondary-button" onClick={copyYesterdayNutrition}><Copy size={18} /> Вчера</button>
-          <button type="button" className="secondary-button" onClick={() => saveDayAsMenu(quickMenuTitle)}><Save size={18} /> Сохранить день</button>
-          <button type="button" className="secondary-button" onClick={addSampleMenu}><Utensils size={18} /> Пример меню</button>
-        </div>
-        <div className="field">
-          <label>Название для сохранения текущего дня</label>
+        <div className="save-menu-row">
           <input value={quickMenuTitle} onChange={(event) => setQuickMenuTitle(event.target.value)} placeholder={`Например: рацион ${formatShortDate(selectedDate)}`} />
+          <button type="button" className="secondary-button" onClick={() => saveDayAsMenu(quickMenuTitle)}><Save size={18} /> Сохранить день</button>
         </div>
-        {savedMenus.length > 0 ? (
+        {savedMenus.length === 0 ? <p className="hint">Пока нет сохраненных меню.</p> : (
           <div className="saved-menu-list">
             {savedMenus.map((menu) => (
               <div key={menu.id} className="saved-menu-row">
-                <button type="button" onClick={() => applySavedMenu(menu)}><strong>{menu.title}</strong><span>{menu.items?.length || 0} поз. · {menu.calories} ккал</span></button>
+                <div><strong>{menu.title}</strong><span>{menu.items.length} поз. · {menu.calories} ккал</span></div>
+                <button type="button" onClick={() => applySavedMenu(menu)}>Применить</button>
                 <button type="button" onClick={() => deleteSavedMenu(menu.id)} aria-label="Удалить меню"><Trash2 size={15} /></button>
               </div>
             ))}
           </div>
-        ) : <p className="hint">Пока нет сохраненных пресетов. Собери день питания или создай рацион в конструкторе.</p>}
+        )}
 
-        <details className="details-box menu-builder-box">
+        <details className="details-box">
           <summary>Конструктор рациона</summary>
           <div className="stack details-content">
             <div className="field">
-              <label>Название меню</label>
-              <input value={builderTitle} onChange={(event) => setBuilderTitle(event.target.value)} placeholder="Например: набор массы 2800 ккал" />
+              <label>Название пресета</label>
+              <input value={builderTitle} onChange={(event) => setBuilderTitle(event.target.value)} placeholder="Например: день на 2200 ккал" />
             </div>
-            <div className="grid-3 builder-controls">
+            <div className="grid-3 compact-grid">
               <div className="field">
                 <label>Приём пищи</label>
                 <select value={builderForm.meal} onChange={(event) => setBuilderForm((current) => ({ ...current, meal: event.target.value }))}>
@@ -2435,11 +2553,11 @@ function NutritionScreen({
         </details>
       </div>
 
-      <details className="card stack template-details">
+      <details className="card stack template-details" open>
         <summary>
           <span>
             <strong>Добавить продукт</strong>
-            <small>Выбери из базы, избранного или введи данные с этикетки</small>
+            <small>Поиск, свои продукты, сканер и данные с этикетки</small>
           </span>
           <Apple className="muted-icon" />
         </summary>
@@ -2465,20 +2583,70 @@ function NutritionScreen({
             <NumberField label="Граммы" value={foodForm.grams} onChange={(value) => setFoodForm((current) => ({ ...current, grams: value }))} />
           </div>
 
-          <div className="field">
-            <label>Общий список продуктов</label>
-            <select value={foodForm.foodId} onChange={(event) => selectFood(event.target.value)}>
-              {commonFoodDatabase.map((food) => <option key={food.id} value={food.id}>{food.code ? "📦 " : ""}{food.name}</option>)}
-            </select>
+          <div className="food-search-panel">
+            <div className="search-box">
+              <Search size={18} />
+              <input value={foodSearch} onChange={(event) => setFoodSearch(event.target.value)} placeholder="Найти продукт в общем списке" />
+            </div>
+            <div className="food-results-list">
+              {filteredFoods.map((food) => {
+                const isActive = selectedFood?.id === food.id;
+                const isUserFood = isSavedUserFood(food.id);
+                return (
+                  <div key={food.id} className={`food-result-row ${isActive ? "active" : ""}`}>
+                    <button type="button" onClick={() => chooseFood(food)}>
+                      <strong>{food.code ? "📦 " : ""}{food.name}</strong>
+                      <span>{food.calories} ккал · Б {food.protein} · Ж {food.fat} · У {food.carbs} на 100 г</span>
+                    </button>
+                    {isUserFood && (
+                      <div className="food-row-actions">
+                        <button type="button" onClick={() => startEditFood(food)}>Ред.</button>
+                        <button type="button" onClick={() => deleteScannedFood(food.id)} aria-label="Удалить продукт"><Trash2 size={14} /></button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            {commonFoodDatabase.length > filteredFoods.length && <p className="hint">Показано {filteredFoods.length} из {commonFoodDatabase.length}. Уточни поиск, если продукта не видно.</p>}
           </div>
 
-          {selectedFood && isSavedUserFood(selectedFood.id) && (
-            <div className="selected-food-row">
-              <div>
-                <strong>{selectedFood.name}</strong>
-                <small>{selectedFood.calories} ккал · Б {selectedFood.protein} · Ж {selectedFood.fat} · У {selectedFood.carbs} на 100 г</small>
+          {selectedFood && (
+            <div className="selected-food-card">
+              <div className="selected-food-main">
+                <span className="pill">{selectedFoodSource}</span>
+                <h3>{selectedFood.name}</h3>
+                <p>{selectedFood.calories} ккал · Б {selectedFood.protein} г · Ж {selectedFood.fat} г · У {selectedFood.carbs} г на 100 г</p>
+                {selectedFood.defaultGrams && <small>Обычная порция: {selectedFood.defaultGrams} г</small>}
               </div>
-              <button type="button" onClick={() => deleteScannedFood(selectedFood.id)}><Trash2 size={15} /> Удалить</button>
+              <div className="selected-food-actions">
+                {selectedIsUserFood && <button type="button" onClick={() => startEditFood(selectedFood)}>Редактировать</button>}
+                {selectedIsUserFood && <button type="button" className="danger-text-button" onClick={() => deleteScannedFood(selectedFood.id)}>Удалить</button>}
+              </div>
+            </div>
+          )}
+
+          {editingFoodId && (
+            <div className="edit-food-card stack">
+              <div className="section-head inline">
+                <div>
+                  <h3>Редактировать продукт</h3>
+                  <p>Изменения сохранятся в общем списке продуктов</p>
+                </div>
+                <button type="button" className="tiny-link" onClick={() => setEditingFoodId("")}>Закрыть</button>
+              </div>
+              <div className="field">
+                <label>Название</label>
+                <input value={editFoodForm.name} onChange={(event) => setEditField("name", event.target.value)} />
+              </div>
+              <div className="grid-4 compact-grid">
+                <NumberField label="Ккал/100г" value={editFoodForm.calories} onChange={(value) => setEditField("calories", value)} />
+                <NumberField label="Б/100г" value={editFoodForm.protein} onChange={(value) => setEditField("protein", value)} />
+                <NumberField label="Ж/100г" value={editFoodForm.fat} onChange={(value) => setEditField("fat", value)} />
+                <NumberField label="У/100г" value={editFoodForm.carbs} onChange={(value) => setEditField("carbs", value)} />
+              </div>
+              <NumberField label="Порция по умолчанию, г" value={editFoodForm.defaultGrams} onChange={(value) => setEditField("defaultGrams", value)} />
+              <button type="button" className="primary-button" onClick={saveEditedFood}><Save size={18} /> Сохранить продукт</button>
             </div>
           )}
 
@@ -2495,6 +2663,7 @@ function NutritionScreen({
                 <NumberField label="Ж/100г" value={foodForm.fat} onChange={(value) => setFoodForm((current) => ({ ...current, fat: value }))} />
                 <NumberField label="У/100г" value={foodForm.carbs} onChange={(value) => setFoodForm((current) => ({ ...current, carbs: value }))} />
               </div>
+              <button className="secondary-button" type="button" onClick={saveCurrentFoodToGeneralList}><Save size={18} /> Сохранить в общий список</button>
             </div>
           </details>
 
@@ -2535,7 +2704,7 @@ function NutritionScreen({
             <div>
               <strong>{scanner.product.name}</strong>
               <p>{scanner.product.per100?.calories || 0} ккал · Б {scanner.product.per100?.protein || 0} · Ж {scanner.product.per100?.fat || 0} · У {scanner.product.per100?.carbs || 0} на 100 г</p>
-              <small>Продукт сохранён в общем списке отсканированных товаров.</small>
+              <small>Проверь граммовку и прием пищи перед добавлением.</small>
             </div>
             <div className="scanner-add-grid">
               <div className="field">
@@ -2551,6 +2720,30 @@ function NutritionScreen({
         )}
         <p className="hint">В Safari используется fallback через ZXing. Камера работает только на HTTPS или localhost. По фото тарелки точность ограничена: без веса порции приложение не знает реальное количество граммов.</p>
       </div>
+
+      {savedUserFoods.length > 0 && (
+        <div className="card stack">
+          <div className="section-head inline">
+            <div>
+              <h2>Мои продукты</h2>
+              <p>То, что ты ввел вручную или отсканировал</p>
+            </div>
+            <span className="pill">{savedUserFoods.length}</span>
+          </div>
+          <div className="user-food-list">
+            {savedUserFoods.map((food) => (
+              <div key={food.id} className="user-food-row">
+                <button type="button" onClick={() => chooseFood(food)}>
+                  <strong>{food.name}</strong>
+                  <span>{food.calories} ккал · Б {food.protein} · Ж {food.fat} · У {food.carbs}</span>
+                </button>
+                <button type="button" onClick={() => startEditFood(food)}>Ред.</button>
+                <button type="button" onClick={() => deleteScannedFood(food.id)} aria-label="Удалить"><Trash2 size={15} /></button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <section className="stack">
         {meals.map((meal) => {
@@ -2650,7 +2843,20 @@ function AuthCard({ auth }) {
           <span className={`sync-badge ${auth.cloudLoaded ? "ready" : "pending"}`}>{auth.cloudLoaded ? "sync" : "..."}</span>
         </div>
         <div className="cloud-status">{auth.cloudStatus}</div>
-        <button type="button" className="secondary-button" onClick={auth.handleSignOut} disabled={auth.authLoading}>Выйти</button>
+        <div className="auth-action-row single">
+          <button
+            type="button"
+            className="danger-button"
+            onClick={() => {
+              if (window.confirm("Выйти из аккаунта? Данные на этом устройстве будут очищены, а облачные данные аккаунта останутся.")) {
+                auth.handleSignOut();
+              }
+            }}
+            disabled={auth.authLoading}
+          >
+            Выйти из аккаунта
+          </button>
+        </div>
       </div>
     );
   }
@@ -2694,8 +2900,32 @@ function ProfileMetric({ icon: Icon, label, value, detail }) {
   );
 }
 
-function ProfileScreen({ profile, updateProfile, nutritionPlan, bmi, trend, weightForm, setWeightForm, addWeightRecord, weightLog, deleteWeightRecord, auth }) {
+function ProfileScreen({ profile, saveProfile, nutritionPlan, bmi, trend, weightForm, setWeightForm, addWeightRecord, weightLog, deleteWeightRecord, auth }) {
   const [editing, setEditing] = useState(false);
+  const [draftProfile, setDraftProfile] = useState(profile);
+
+  useEffect(() => {
+    if (!editing) setDraftProfile(profile);
+  }, [profile, editing]);
+
+  function updateDraftProfile(field, value) {
+    setDraftProfile((current) => ({ ...current, [field]: value }));
+  }
+
+  function startEditingProfile() {
+    setDraftProfile(profile);
+    setEditing(true);
+  }
+
+  function cancelProfileEditing() {
+    setDraftProfile(profile);
+    setEditing(false);
+  }
+
+  function submitProfileDraft() {
+    saveProfile(draftProfile);
+    setEditing(false);
+  }
   const activity = activityLevels.find((level) => level.value === profile.activityLevel) || { label: "Не указана", detail: "заполни профиль" };
   const currentWeight = numeric(profile.weightKg);
   const targetWeight = numeric(profile.targetWeightKg);
@@ -2735,42 +2965,42 @@ function ProfileScreen({ profile, updateProfile, nutritionPlan, bmi, trend, weig
               <ProfileMetric icon={Activity} label="Активность" value={activity.label} detail={activity.detail} />
               <ProfileMetric icon={Calculator} label="BMI" value={bmi ? round(bmi, 1) : "—"} detail={bmiCategory(bmi)} />
             </div>
-            <button type="button" className="edit-profile-button" onClick={() => setEditing(true)}><UserRound size={17} /> Редактировать профиль</button>
+            <button type="button" className="edit-profile-button" onClick={startEditingProfile}><UserRound size={17} /> Редактировать профиль</button>
           </>
         ) : (
           <div className="profile-inline-editor">
             <div className="field">
               <label>Имя</label>
-              <input value={profile.name} onChange={(event) => updateProfile("name", event.target.value)} placeholder="Например: Мария" />
+              <input value={draftProfile.name} onChange={(event) => updateDraftProfile("name", event.target.value)} placeholder="Например: Мария" />
             </div>
 
             <div className="grid-2">
               <div className="field">
                 <label>Пол</label>
-                <select value={profile.sex} onChange={(event) => updateProfile("sex", event.target.value)}>
+                <select value={draftProfile.sex} onChange={(event) => updateDraftProfile("sex", event.target.value)}>
                   <option value="">Выберите</option>
                   <option value="female">Женский</option>
                   <option value="male">Мужской</option>
                 </select>
               </div>
-              <NumberField label="Возраст" value={profile.age} onChange={(value) => updateProfile("age", value)} />
+              <NumberField label="Возраст" value={draftProfile.age} onChange={(value) => updateDraftProfile("age", value)} />
             </div>
 
             <div className="grid-3 profile-number-grid">
-              <NumberField label="Рост, см" value={profile.heightCm} onChange={(value) => updateProfile("heightCm", value)} />
-              <NumberField label="Вес, кг" value={profile.weightKg} onChange={(value) => updateProfile("weightKg", value)} />
-              <NumberField label="Цель, кг" value={profile.targetWeightKg} onChange={(value) => updateProfile("targetWeightKg", value)} />
+              <NumberField label="Рост, см" value={draftProfile.heightCm} onChange={(value) => updateDraftProfile("heightCm", value)} />
+              <NumberField label="Вес, кг" value={draftProfile.weightKg} onChange={(value) => updateDraftProfile("weightKg", value)} />
+              <NumberField label="Цель, кг" value={draftProfile.targetWeightKg} onChange={(value) => updateDraftProfile("targetWeightKg", value)} />
             </div>
 
             <div className="field">
               <label>Активность</label>
-              <select value={profile.activityLevel} onChange={(event) => updateProfile("activityLevel", event.target.value)}>
+              <select value={draftProfile.activityLevel} onChange={(event) => updateDraftProfile("activityLevel", event.target.value)}>
                 <option value="">Выберите активность</option>
                 {activityLevels.map((level) => <option key={level.value} value={level.value}>{level.label} · {level.detail}</option>)}
               </select>
             </div>
 
-            <NumberField label="План изменения веса, кг/нед." value={profile.weeklyChangeKg} onChange={(value) => updateProfile("weeklyChangeKg", value)} />
+            <NumberField label="План изменения веса, кг/нед." value={draftProfile.weeklyChangeKg} onChange={(value) => updateDraftProfile("weeklyChangeKg", value)} />
 
             <div className="custom-goals-editor">
               <div className="section-head inline">
@@ -2781,14 +3011,17 @@ function ProfileScreen({ profile, updateProfile, nutritionPlan, bmi, trend, weig
                 <Target className="muted-icon" />
               </div>
               <div className="grid-4 compact-grid custom-goals-grid">
-                <NumberField label="Ккал" value={profile.customCalories} onChange={(value) => updateProfile("customCalories", value)} placeholder={nutritionPlan.autoTargetCalories || nutritionPlan.targetCalories || ""} />
-                <NumberField label="Белки, г" value={profile.customProtein} onChange={(value) => updateProfile("customProtein", value)} placeholder={nutritionPlan.autoProtein || nutritionPlan.protein || ""} />
-                <NumberField label="Жиры, г" value={profile.customFat} onChange={(value) => updateProfile("customFat", value)} placeholder={nutritionPlan.autoFat || nutritionPlan.fat || ""} />
-                <NumberField label="Углев., г" value={profile.customCarbs} onChange={(value) => updateProfile("customCarbs", value)} placeholder={nutritionPlan.autoCarbs || nutritionPlan.carbs || ""} />
+                <NumberField label="Ккал" value={draftProfile.customCalories} onChange={(value) => updateDraftProfile("customCalories", value)} placeholder={nutritionPlan.autoTargetCalories || nutritionPlan.targetCalories || ""} />
+                <NumberField label="Белки, г" value={draftProfile.customProtein} onChange={(value) => updateDraftProfile("customProtein", value)} placeholder={nutritionPlan.autoProtein || nutritionPlan.protein || ""} />
+                <NumberField label="Жиры, г" value={draftProfile.customFat} onChange={(value) => updateDraftProfile("customFat", value)} placeholder={nutritionPlan.autoFat || nutritionPlan.fat || ""} />
+                <NumberField label="Углев., г" value={draftProfile.customCarbs} onChange={(value) => updateDraftProfile("customCarbs", value)} placeholder={nutritionPlan.autoCarbs || nutritionPlan.carbs || ""} />
               </div>
             </div>
 
-            <button type="button" className="primary-button profile-save-button" onClick={() => setEditing(false)}><Save size={18} /> Сохранить</button>
+            <div className="profile-editor-actions">
+              <button type="button" className="secondary-button" onClick={cancelProfileEditing}><X size={18} /> Отмена</button>
+              <button type="button" className="primary-button profile-save-button" onClick={submitProfileDraft}><Save size={18} /> Сохранить</button>
+            </div>
           </div>
         )}
       </div>
@@ -3208,4 +3441,41 @@ function EmptyState({ text }) {
   );
 }
 
-createRoot(document.getElementById("root")).render(<App />);
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, message: "" };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, message: error?.message || "Неизвестная ошибка" };
+  }
+
+  componentDidCatch(error, info) {
+    console.error("Gym Helper UI error", error, info);
+  }
+
+  render() {
+    if (!this.state.hasError) return this.props.children;
+    return (
+      <div className="app-shell">
+        <div className="mobile-frame error-boundary-screen">
+          <div className="card stack">
+            <div className="section-head">
+              <div>
+                <p className="eyebrow">Gym Helper</p>
+                <h2>Раздел временно не загрузился</h2>
+                <p>Данные не удалены. Обнови страницу или вернись после следующего обновления.</p>
+              </div>
+              <Info className="muted-icon" />
+            </div>
+            <p className="hint">Техническая ошибка: {this.state.message}</p>
+            <button type="button" className="primary-button" onClick={() => window.location.reload()}>Обновить приложение</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+}
+
+createRoot(document.getElementById("root")).render(<ErrorBoundary><App /></ErrorBoundary>);
