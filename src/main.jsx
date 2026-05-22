@@ -794,12 +794,68 @@ function emptyWorkoutForm() {
     sets: "3",
     reps: "10",
     weight: "",
+    setMode: "summary",
+    setRows: makeDefaultSetRows(3, 10, ""),
     duration: "30",
     intensityId: "",
     distance: "",
     calories: "",
     note: "",
   };
+}
+
+function makeDefaultSetRows(sets = 3, reps = 10, weight = "") {
+  const count = Math.max(1, Math.min(12, Math.round(numeric(sets, 3)) || 3));
+  return Array.from({ length: count }, (_, index) => ({
+    id: uid(),
+    order: index + 1,
+    reps: String(reps ?? ""),
+    weight: weight === undefined || weight === null ? "" : String(weight),
+  }));
+}
+
+function normalizeWorkoutSetRows(rows = []) {
+  return rows
+    .map((row, index) => ({
+      id: row.id || uid(),
+      order: index + 1,
+      reps: numeric(row.reps),
+      weight: row.weight === "" || row.weight === undefined || row.weight === null ? "" : numeric(row.weight),
+    }))
+    .filter((row) => row.reps > 0);
+}
+
+function getStrengthSetRows(entry) {
+  if (Array.isArray(entry?.setRows) && entry.setRows.length) return normalizeWorkoutSetRows(entry.setRows);
+  const sets = Math.max(0, Math.round(numeric(entry?.sets)));
+  if (!sets) return [];
+  return Array.from({ length: sets }, (_, index) => ({
+    id: `${entry.id || "entry"}-${index}`,
+    order: index + 1,
+    reps: numeric(entry?.reps),
+    weight: entry?.weight === "" || entry?.weight === undefined || entry?.weight === null ? "" : numeric(entry?.weight),
+  })).filter((row) => row.reps > 0);
+}
+
+function summarizeStrengthEntry(entry) {
+  const rows = getStrengthSetRows(entry);
+  const sets = rows.length || numeric(entry?.sets);
+  const repsValues = rows.map((row) => row.reps).filter(Boolean);
+  const weightValues = rows.map((row) => row.weight).filter((value) => value !== "" && value !== undefined && value !== null && numeric(value) > 0);
+  const uniqueReps = [...new Set(repsValues.map(String))];
+  const uniqueWeights = [...new Set(weightValues.map(String))];
+  const repsLabel = uniqueReps.length === 1 ? uniqueReps[0] : repsValues.length ? `${Math.min(...repsValues)}–${Math.max(...repsValues)}` : entry?.reps || "—";
+  const weightLabel = uniqueWeights.length === 1 ? `${uniqueWeights[0]} кг` : weightValues.length ? `${Math.min(...weightValues)}–${Math.max(...weightValues)} кг` : "—";
+  const totalReps = rows.reduce((sum, row) => sum + numeric(row.reps), 0);
+  const maxWeight = weightValues.length ? Math.max(...weightValues.map(numeric)) : 0;
+  return { rows, sets, repsLabel, weightLabel, totalReps, maxWeight };
+}
+
+function formatStrengthSummary(entry) {
+  if (!entry || entry.type === "cardio") return "";
+  const summary = summarizeStrengthEntry(entry);
+  const maxWeightText = summary.maxWeight ? ` · до ${summary.maxWeight} кг` : "";
+  return `${summary.sets || 0} подх. · ${summary.totalReps || summary.repsLabel} повт.${maxWeightText}`;
 }
 
 function emptyFoodForm() {
@@ -992,6 +1048,10 @@ function calculateWeightTrend(weightLog, targetWeight) {
 
 function volume(entry) {
   if (entry.type !== "strength") return 0;
+  const rows = getStrengthSetRows(entry);
+  if (rows.length) {
+    return rows.reduce((sum, row) => sum + numeric(row.reps) * numeric(row.weight), 0);
+  }
   return numeric(entry.sets) * numeric(entry.reps) * numeric(entry.weight);
 }
 
@@ -1265,6 +1325,13 @@ function App() {
   const activeCardioProfile = workoutForm.type === "cardio" ? getCardioProfile(workoutForm.name) || cardioProfiles["Беговая дорожка"] : null;
   const selectedIntensity = getIntensity(activeCardioProfile, workoutForm.intensityId);
   const selectedExerciseInfo = workoutForm.type === "strength" ? getExerciseInfo(workoutForm.name) : null;
+  const previousExerciseEntry = useMemo(() => {
+    const name = normalize(workoutForm.name);
+    if (workoutForm.type !== "strength" || !name) return null;
+    return entries
+      .filter((entry) => entry.type !== "cardio" && normalize(entry.name) === name && entry.date !== selectedDate)
+      .sort((a, b) => (b.date.localeCompare(a.date) || numeric(b.createdAt) - numeric(a.createdAt)))[0] || null;
+  }, [entries, selectedDate, workoutForm.name, workoutForm.type]);
   const estimatedWorkoutCalories = calculateExerciseCalories({
     met: selectedIntensity?.met,
     weightKg: profile.weightKg,
@@ -1445,6 +1512,82 @@ function App() {
     setWorkoutForm((current) => ({ ...current, [field]: value }));
   }
 
+  function setWorkoutSetMode(mode) {
+    setWorkoutForm((current) => ({
+      ...current,
+      setMode: mode,
+      setRows: mode === "detailed" && (!Array.isArray(current.setRows) || !current.setRows.length)
+        ? makeDefaultSetRows(current.sets, current.reps, current.weight)
+        : current.setRows,
+    }));
+  }
+
+  function fillWorkoutSetsFromSummary() {
+    setWorkoutForm((current) => ({
+      ...current,
+      setMode: "detailed",
+      setRows: makeDefaultSetRows(current.sets, current.reps, current.weight),
+    }));
+  }
+
+  function updateWorkoutSetRow(index, field, value) {
+    setWorkoutForm((current) => {
+      const rows = Array.isArray(current.setRows) && current.setRows.length
+        ? current.setRows
+        : makeDefaultSetRows(current.sets, current.reps, current.weight);
+      return {
+        ...current,
+        setRows: rows.map((row, rowIndex) => rowIndex === index ? { ...row, [field]: value } : row),
+      };
+    });
+  }
+
+  function addWorkoutSetRow() {
+    setWorkoutForm((current) => {
+      const rows = Array.isArray(current.setRows) && current.setRows.length
+        ? current.setRows
+        : makeDefaultSetRows(current.sets, current.reps, current.weight);
+      const last = rows[rows.length - 1] || { reps: current.reps, weight: current.weight };
+      return {
+        ...current,
+        setMode: "detailed",
+        setRows: [...rows, { id: uid(), order: rows.length + 1, reps: last.reps || current.reps || "", weight: last.weight ?? current.weight ?? "" }].slice(0, 12),
+      };
+    });
+  }
+
+  function removeWorkoutSetRow(index) {
+    setWorkoutForm((current) => {
+      const rows = (Array.isArray(current.setRows) ? current.setRows : []).filter((_, rowIndex) => rowIndex !== index);
+      return { ...current, setRows: rows.length ? rows : makeDefaultSetRows(1, current.reps, current.weight) };
+    });
+  }
+
+  function applyPreviousExerciseResult(entry) {
+    if (!entry) return;
+    const rows = getStrengthSetRows(entry);
+    if (rows.length) {
+      setWorkoutForm((current) => ({
+        ...current,
+        name: entry.name,
+        sets: String(rows.length),
+        reps: rows.length && rows.every((row) => row.reps === rows[0].reps) ? String(rows[0].reps) : current.reps,
+        weight: rows.length && rows.every((row) => numeric(row.weight) === numeric(rows[0].weight)) ? String(rows[0].weight || "") : current.weight,
+        setMode: "detailed",
+        setRows: rows.map((row, index) => ({ id: uid(), order: index + 1, reps: String(row.reps || ""), weight: row.weight === "" ? "" : String(row.weight) })),
+      }));
+    } else {
+      setWorkoutForm((current) => ({
+        ...current,
+        name: entry.name,
+        sets: String(entry.sets || current.sets),
+        reps: String(entry.reps || current.reps),
+        weight: entry.weight === "" || entry.weight === undefined ? "" : String(entry.weight),
+        setMode: "summary",
+      }));
+    }
+  }
+
   function selectWorkoutType(type) {
     setWorkoutForm((current) => ({ ...emptyWorkoutForm(), type, name: type === "cardio" ? "Беговая дорожка" : current.name }));
     setShowSuggestions(false);
@@ -1481,6 +1624,11 @@ function App() {
         createdAt: Date.now() + index,
       };
     }
+    const rows = makeDefaultSetRows(item.sets, item.reps, item.weight).map((row) => ({
+      ...row,
+      reps: numeric(row.reps),
+      weight: row.weight === "" ? "" : numeric(row.weight),
+    }));
     return {
       id: uid(),
       date: selectedDate,
@@ -1489,6 +1637,7 @@ function App() {
       sets: numeric(item.sets),
       reps: numeric(item.reps),
       weight: item.weight === "" ? "" : numeric(item.weight),
+      setRows: rows,
       note: "Из шаблона",
       createdAt: Date.now() + index,
     };
@@ -1530,24 +1679,44 @@ function App() {
         ...current,
       ]);
     } else {
-      const sets = numeric(workoutForm.sets);
-      const reps = numeric(workoutForm.reps);
-      if (sets <= 0 || reps <= 0) return;
-
-      setEntries((current) => [
-        {
+      let strengthEntry;
+      if (workoutForm.setMode === "detailed") {
+        const rows = normalizeWorkoutSetRows(workoutForm.setRows);
+        if (!rows.length) return;
+        const sameReps = rows.every((row) => row.reps === rows[0].reps);
+        const sameWeight = rows.every((row) => numeric(row.weight) === numeric(rows[0].weight));
+        strengthEntry = {
+          id: uid(),
+          date: selectedDate,
+          type: "strength",
+          name,
+          sets: rows.length,
+          reps: sameReps ? rows[0].reps : "",
+          weight: sameWeight ? rows[0].weight : "",
+          setRows: rows,
+          note: workoutForm.note.trim(),
+          createdAt: Date.now(),
+        };
+      } else {
+        const sets = numeric(workoutForm.sets);
+        const reps = numeric(workoutForm.reps);
+        if (sets <= 0 || reps <= 0) return;
+        const weight = workoutForm.weight === "" ? "" : numeric(workoutForm.weight);
+        strengthEntry = {
           id: uid(),
           date: selectedDate,
           type: "strength",
           name,
           sets,
           reps,
-          weight: workoutForm.weight === "" ? "" : numeric(workoutForm.weight),
+          weight,
+          setRows: makeDefaultSetRows(sets, reps, weight).map((row) => ({ ...row, reps: numeric(row.reps), weight: row.weight === "" ? "" : numeric(row.weight) })),
           note: workoutForm.note.trim(),
           createdAt: Date.now(),
-        },
-        ...current,
-      ]);
+        };
+      }
+
+      setEntries((current) => [strengthEntry, ...current]);
     }
 
     setWorkoutForm({ ...emptyWorkoutForm(), type: workoutForm.type, name });
@@ -2108,11 +2277,53 @@ function App() {
                           <button type="button" onClick={() => setExerciseInfoName(selectedExerciseInfo.name)}><Info size={16} /> Как делать</button>
                         </div>
                       )}
-                      <div className="grid-3">
-                        <NumberField label="Подходы" value={workoutForm.sets} onChange={(value) => setWorkoutField("sets", value)} />
-                        <NumberField label="Повторы" value={workoutForm.reps} onChange={(value) => setWorkoutField("reps", value)} />
-                        <NumberField label="Вес, кг" value={workoutForm.weight} onChange={(value) => setWorkoutField("weight", value)} placeholder="0" />
+
+                      {previousExerciseEntry && (
+                        <div className="previous-result-card">
+                          <div>
+                            <span>Прошлый результат · {formatShortDate(previousExerciseEntry.date)}</span>
+                            <strong>{formatStrengthSummary(previousExerciseEntry)}</strong>
+                          </div>
+                          <button type="button" onClick={() => applyPreviousExerciseResult(previousExerciseEntry)}>Повторить</button>
+                        </div>
+                      )}
+
+                      <div className="segmented compact-segmented">
+                        <button type="button" className={workoutForm.setMode !== "detailed" ? "active" : ""} onClick={() => setWorkoutSetMode("summary")}>Сводно</button>
+                        <button type="button" className={workoutForm.setMode === "detailed" ? "active" : ""} onClick={() => setWorkoutSetMode("detailed")}>По подходам</button>
                       </div>
+
+                      {workoutForm.setMode === "detailed" ? (
+                        <div className="set-builder">
+                          <div className="set-builder-head">
+                            <span>Подход</span>
+                            <span>Повт.</span>
+                            <span>Кг</span>
+                            <span />
+                          </div>
+                          {(workoutForm.setRows || []).map((row, index) => (
+                            <div className="set-row" key={row.id || index}>
+                              <strong>{index + 1}</strong>
+                              <input type="number" inputMode="numeric" min="0" step="1" value={row.reps} onChange={(event) => updateWorkoutSetRow(index, "reps", event.target.value)} aria-label={`Повторы в подходе ${index + 1}`} />
+                              <input type="number" inputMode="decimal" min="0" step="any" value={row.weight} onChange={(event) => updateWorkoutSetRow(index, "weight", event.target.value)} aria-label={`Вес в подходе ${index + 1}`} />
+                              <button type="button" onClick={() => removeWorkoutSetRow(index)} aria-label="Удалить подход"><Trash2 size={15} /></button>
+                            </div>
+                          ))}
+                          <div className="set-builder-actions">
+                            <button type="button" className="secondary-button" onClick={addWorkoutSetRow}><Plus size={17} /> Добавить подход</button>
+                            <button type="button" className="tiny-link" onClick={fillWorkoutSetsFromSummary}>Заполнить из сводки</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="stack small-gap">
+                          <div className="grid-3">
+                            <NumberField label="Подходы" value={workoutForm.sets} onChange={(value) => setWorkoutField("sets", value)} />
+                            <NumberField label="Повторы" value={workoutForm.reps} onChange={(value) => setWorkoutField("reps", value)} />
+                            <NumberField label="Вес, кг" value={workoutForm.weight} onChange={(value) => setWorkoutField("weight", value)} placeholder="0" />
+                          </div>
+                          <button type="button" className="secondary-button inline-action-button" onClick={fillWorkoutSetsFromSummary}>Разбить на подходы</button>
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -3223,6 +3434,7 @@ function ExerciseCard({ entry, onDelete, onRest, onInfo, compact = false }) {
   const isCardio = entry.type === "cardio";
   const currentVolume = volume(entry);
   const exerciseInfo = !isCardio ? getExerciseInfo(entry.name) : null;
+  const strengthSummary = !isCardio ? summarizeStrengthEntry(entry) : null;
   return (
     <article className="exercise-card">
       <div className="card-top">
@@ -3243,13 +3455,24 @@ function ExerciseCard({ entry, onDelete, onRest, onInfo, compact = false }) {
         </div>
       ) : (
         <div className="metric-grid">
-          <MiniMetric icon={Dumbbell} label="Подходы" value={entry.sets} />
-          <MiniMetric icon={Activity} label="Повторы" value={entry.reps} />
-          <MiniMetric icon={Weight} label="Вес" value={entry.weight ? `${entry.weight} кг` : "—"} />
+          <MiniMetric icon={Dumbbell} label="Подходы" value={strengthSummary.sets || "—"} />
+          <MiniMetric icon={Activity} label="Повторы" value={strengthSummary.repsLabel || "—"} />
+          <MiniMetric icon={Weight} label="Вес" value={strengthSummary.weightLabel || "—"} />
         </div>
       )}
 
       {isCardio && entry.intensityLabel && <p className="hint tight">{entry.intensityLabel}</p>}
+      {!isCardio && !compact && strengthSummary.rows.length > 0 && (
+        <div className="set-log-list">
+          {strengthSummary.rows.map((row, index) => (
+            <div key={row.id || index}>
+              <span>{index + 1}</span>
+              <strong>{row.reps} повт.</strong>
+              <em>{row.weight ? `${row.weight} кг` : "без веса"}</em>
+            </div>
+          ))}
+        </div>
+      )}
       {!isCardio && exerciseInfo && (
         <div className="muscle-summary">
           <img className="exercise-thumb" src={getExerciseImageSrc(exerciseInfo.name)} alt="" loading="lazy" />
@@ -3418,7 +3641,7 @@ function MiniWorkoutRow({ entry }) {
       <span>{entry.type === "cardio" ? "🔥" : "💪"}</span>
       <div>
         <strong>{entry.name}</strong>
-        <small>{entry.type === "cardio" ? `${entry.duration} мин · ${entry.calories} ккал` : `${entry.sets}×${entry.reps}${entry.weight ? ` · ${entry.weight} кг` : ""}`}</small>
+        <small>{entry.type === "cardio" ? `${entry.duration} мин · ${entry.calories} ккал` : formatStrengthSummary(entry)}</small>
       </div>
     </div>
   );
