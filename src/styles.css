@@ -2382,3 +2382,126 @@ button:disabled {
     grid-template-columns: 1fr;
   }
 }
+
+/* v19: weekly analytics and PWA install card */
+.week-summary-card {
+  overflow: hidden;
+}
+
+.week-bars {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 7px;
+  align-items: end;
+  min-height: 104px;
+  padding: 10px 4px 0;
+}
+
+.week-bar-item {
+  display: grid;
+  gap: 7px;
+  justify-items: center;
+  min-width: 0;
+}
+
+.week-bar-shell {
+  width: 100%;
+  max-width: 30px;
+  height: 82px;
+  display: flex;
+  align-items: end;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.week-bar-shell span {
+  display: block;
+  width: 100%;
+  min-height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #67e8f9, #22c55e);
+  box-shadow: 0 0 18px rgba(34, 211, 238, 0.25);
+}
+
+.week-bar-item em {
+  color: #64748b;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.week-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.mini-plain-metric {
+  border-radius: 18px;
+  padding: 11px;
+  background: rgba(15, 23, 42, 0.74);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  min-width: 0;
+}
+
+.mini-plain-metric span {
+  display: block;
+  color: #94a3b8;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.mini-plain-metric strong {
+  display: block;
+  margin-top: 5px;
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+
+.install-card {
+  display: grid;
+  gap: 14px;
+  background:
+    radial-gradient(circle at top left, rgba(103, 232, 249, 0.14), transparent 12rem),
+    rgba(255, 255, 255, 0.055);
+}
+
+.install-icon {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  margin-bottom: 12px;
+  border-radius: 16px;
+  color: #67e8f9;
+  background: rgba(103, 232, 249, 0.12);
+  border: 1px solid rgba(103, 232, 249, 0.18);
+}
+
+.install-card h2 {
+  margin-bottom: 7px;
+}
+
+.install-card p {
+  color: #94a3b8;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+@media (min-width: 960px) {
+  .week-stats-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .install-card {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+  }
+
+  .install-card .primary-button {
+    min-width: 150px;
+  }
+}

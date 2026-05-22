@@ -27,6 +27,7 @@ import {
   Save,
   Search,
   Star,
+  Smartphone,
   Target,
   Timer,
   Trash2,
@@ -1072,6 +1073,68 @@ function calculateWeightTrend(weightLog, targetWeight) {
   return { first, last, days, delta, kgPerWeek, caloriesPerDay, weeksToGoal };
 }
 
+function makeDateRange(endDate, length = 7) {
+  return Array.from({ length }, (_, index) => shiftDateISO(endDate, index - length + 1));
+}
+
+function calculateWeekSummary({ selectedDate, entries, nutritionEntries, weightLog, nutritionPlan }) {
+  const dates = makeDateRange(selectedDate, 7);
+  const dateSet = new Set(dates);
+  const weekWorkouts = entries.filter((entry) => dateSet.has(entry.date));
+  const weekNutrition = nutritionEntries.filter((item) => dateSet.has(item.date));
+  const dailyCalories = dates.map((date) => ({
+    date,
+    calories: weekNutrition
+      .filter((item) => item.date === date)
+      .reduce((sum, item) => sum + numeric(item.total?.calories), 0),
+  }));
+  const dailyProtein = dates.map((date) => weekNutrition
+    .filter((item) => item.date === date)
+    .reduce((sum, item) => sum + numeric(item.total?.protein), 0));
+  const loggedNutritionDays = dailyCalories.filter((item) => item.calories > 0).length;
+  const avgCalories = loggedNutritionDays
+    ? Math.round(dailyCalories.reduce((sum, item) => sum + item.calories, 0) / loggedNutritionDays)
+    : 0;
+  const avgProtein = loggedNutritionDays
+    ? Math.round(dailyProtein.reduce((sum, value) => sum + value, 0) / loggedNutritionDays)
+    : 0;
+  const targetCalories = numeric(nutritionPlan?.targetCalories);
+  const caloriesTargetHitDays = targetCalories
+    ? dailyCalories.filter((item) => item.calories > 0 && Math.abs(item.calories - targetCalories) <= targetCalories * 0.12).length
+    : 0;
+  const strengthVolume = weekWorkouts.reduce((sum, entry) => sum + volume(entry), 0);
+  const cardioCalories = weekWorkouts
+    .filter((entry) => entry.type === "cardio")
+    .reduce((sum, entry) => sum + numeric(entry.calories), 0);
+  const cardioMinutes = weekWorkouts
+    .filter((entry) => entry.type === "cardio")
+    .reduce((sum, entry) => sum + numeric(entry.duration), 0);
+  const workoutDays = new Set(weekWorkouts.map((entry) => entry.date)).size;
+  const weekWeights = weightLog
+    .filter((item) => dateSet.has(item.date) && numeric(item.weightKg) > 0)
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const weightChange = weekWeights.length >= 2
+    ? round(numeric(weekWeights[weekWeights.length - 1].weightKg) - numeric(weekWeights[0].weightKg), 1)
+    : null;
+
+  return {
+    startDate: dates[0],
+    endDate: dates[dates.length - 1],
+    dates,
+    dailyCalories,
+    loggedNutritionDays,
+    avgCalories,
+    avgProtein,
+    caloriesTargetHitDays,
+    workoutDays,
+    workoutCount: weekWorkouts.length,
+    cardioCalories,
+    cardioMinutes,
+    strengthVolume,
+    weightChange,
+  };
+}
+
 function volume(entry) {
   if (entry.type !== "strength") return 0;
   const rows = getStrengthSetRows(entry);
@@ -1107,6 +1170,8 @@ function App() {
   const [authMessage, setAuthMessage] = useState("");
   const [cloudStatus, setCloudStatus] = useState(supabase ? "Войдите, чтобы включить облачную синхронизацию" : "Supabase пока не подключен");
   const [cloudLoaded, setCloudLoaded] = useState(false);
+  const [installPrompt, setInstallPrompt] = useState(null);
+  const [isStandalone, setIsStandalone] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const videoRef = useRef(null);
   const streamRef = useRef(null);
@@ -1158,6 +1223,42 @@ function App() {
   useEffect(() => { if (hydrated) localStorage.setItem(FAVORITE_FOODS_KEY, JSON.stringify(favoriteFoods)); }, [hydrated, favoriteFoods]);
   useEffect(() => { if (hydrated) localStorage.setItem(SAVED_MENUS_KEY, JSON.stringify(savedMenus)); }, [hydrated, savedMenus]);
   useEffect(() => { if (hydrated) localStorage.setItem(SCANNED_FOODS_KEY, JSON.stringify(scannedFoods)); }, [hydrated, scannedFoods]);
+
+  useEffect(() => {
+    if (!("serviceWorker" in navigator) || !import.meta.env.PROD) return undefined;
+    navigator.serviceWorker.register("/sw.js").catch((error) => {
+      console.warn("Service worker не зарегистрирован", error);
+    });
+    return undefined;
+  }, []);
+
+  useEffect(() => {
+    const detectStandalone = () => {
+      const standalone = window.matchMedia?.("(display-mode: standalone)")?.matches || window.navigator.standalone === true;
+      setIsStandalone(Boolean(standalone));
+    };
+
+    const handleBeforeInstallPrompt = (event) => {
+      event.preventDefault();
+      setInstallPrompt(event);
+    };
+
+    const handleAppInstalled = () => {
+      setInstallPrompt(null);
+      setIsStandalone(true);
+    };
+
+    detectStandalone();
+    window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+    window.addEventListener("appinstalled", handleAppInstalled);
+    window.matchMedia?.("(display-mode: standalone)")?.addEventListener?.("change", detectStandalone);
+
+    return () => {
+      window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+      window.removeEventListener("appinstalled", handleAppInstalled);
+      window.matchMedia?.("(display-mode: standalone)")?.removeEventListener?.("change", detectStandalone);
+    };
+  }, []);
 
 
   useEffect(() => {
@@ -1439,6 +1540,14 @@ function App() {
       minutes: cardio.reduce((sum, entry) => sum + numeric(entry.duration), 0),
     };
   }, [dateEntries]);
+
+  const weekSummary = useMemo(() => calculateWeekSummary({
+    selectedDate,
+    entries,
+    nutritionEntries,
+    weightLog,
+    nutritionPlan,
+  }), [selectedDate, entries, nutritionEntries, weightLog, nutritionPlan]);
 
 
 
@@ -2270,6 +2379,18 @@ function App() {
     }
   }
 
+  async function installApp() {
+    if (!installPrompt) return;
+    try {
+      await installPrompt.prompt();
+      await installPrompt.userChoice;
+    } catch (error) {
+      console.warn("Не удалось открыть установку приложения", error);
+    } finally {
+      setInstallPrompt(null);
+    }
+  }
+
   return (
     <div className="app-shell">
       <div className="phone">
@@ -2295,9 +2416,13 @@ function App() {
               dateEntries={dateEntries}
               groupedNutrition={groupedNutrition}
               weightLog={weightLog}
+              weekSummary={weekSummary}
               setTab={setTab}
               addSampleMenu={addSampleMenu}
               startRestTimer={startRestTimer}
+              installPrompt={installPrompt}
+              isStandalone={isStandalone}
+              installApp={installApp}
             />
           )}
 
@@ -2566,7 +2691,7 @@ function App() {
   );
 }
 
-function DashboardScreen({ selectedDate, setSelectedDate, profile, nutritionPlan, dayNutrition, dayWorkoutSummary, dateEntries, groupedNutrition, weightLog, setTab, addSampleMenu, startRestTimer }) {
+function DashboardScreen({ selectedDate, setSelectedDate, profile, nutritionPlan, dayNutrition, dayWorkoutSummary, dateEntries, groupedNutrition, weightLog, weekSummary, setTab, addSampleMenu, startRestTimer, installPrompt, isStandalone, installApp }) {
   const caloriesLeft = nutritionPlan.targetCalories - dayNutrition.totals.calories;
   const latestWeight = weightLog[0]?.weightKg || profile.weightKg;
   const targetWeight = numeric(profile.targetWeightKg);
@@ -2595,6 +2720,10 @@ function DashboardScreen({ selectedDate, setSelectedDate, profile, nutritionPlan
         <SummaryTile icon={Flame} label="Сожжено" value={`${dayWorkoutSummary.cardioCalories} ккал`} detail="по кардио" tone="hot" />
         <SummaryTile icon={Target} label="Вес" value={`${latestWeight || "—"} кг`} detail={weightDelta ? `до цели ${weightDelta > 0 ? "+" : ""}${weightDelta} кг` : "цель задана"} />
       </div>
+
+      <WeeklySummaryCard weekSummary={weekSummary} nutritionPlan={nutritionPlan} />
+
+      {!isStandalone && <InstallAppCard installPrompt={installPrompt} installApp={installApp} />}
 
       <div className="card stack">
         <div className="section-head">
@@ -2627,6 +2756,77 @@ function DashboardScreen({ selectedDate, setSelectedDate, profile, nutritionPlan
         </div>
       </div>
     </section>
+  );
+}
+
+function WeeklySummaryCard({ weekSummary, nutritionPlan }) {
+  if (!weekSummary) return null;
+  const targetCalories = numeric(nutritionPlan?.targetCalories);
+  const maxCalories = Math.max(targetCalories, ...weekSummary.dailyCalories.map((item) => item.calories), 1);
+  const weightText = weekSummary.weightChange == null
+    ? "нет 2 замеров"
+    : `${weekSummary.weightChange > 0 ? "+" : ""}${weekSummary.weightChange} кг`;
+
+  return (
+    <div className="card stack week-summary-card">
+      <div className="section-head">
+        <div>
+          <h2>Неделя</h2>
+          <p>{formatShortDate(weekSummary.startDate)} — {formatShortDate(weekSummary.endDate)}</p>
+        </div>
+        <BarChart3 className="muted-icon" />
+      </div>
+
+      <div className="week-bars" aria-label="Калории по дням за неделю">
+        {weekSummary.dailyCalories.map((item) => (
+          <div key={item.date} className="week-bar-item">
+            <div className="week-bar-shell">
+              <span style={{ height: `${Math.max(4, Math.round((item.calories / maxCalories) * 100))}%` }} />
+            </div>
+            <em>{formatShortDate(item.date).slice(0, 5)}</em>
+          </div>
+        ))}
+      </div>
+
+      <div className="week-stats-grid">
+        <MiniPlainMetric label="Трен. дней" value={weekSummary.workoutDays} />
+        <MiniPlainMetric label="Объем" value={`${Math.round(weekSummary.strengthVolume).toLocaleString("ru-RU")} кг`} />
+        <MiniPlainMetric label="Сред. ккал" value={weekSummary.avgCalories || "—"} />
+        <MiniPlainMetric label="Сред. белок" value={weekSummary.avgProtein ? `${weekSummary.avgProtein} г` : "—"} />
+        <MiniPlainMetric label="Кардио" value={`${weekSummary.cardioMinutes} мин`} />
+        <MiniPlainMetric label="Вес" value={weightText} />
+      </div>
+
+      <p className="hint tight">
+        Цель по калориям попала в коридор ±12%: {weekSummary.caloriesTargetHitDays} из {weekSummary.loggedNutritionDays || 0} дней с питанием.
+      </p>
+    </div>
+  );
+}
+
+function MiniPlainMetric({ label, value }) {
+  return (
+    <div className="mini-plain-metric">
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function InstallAppCard({ installPrompt, installApp }) {
+  return (
+    <div className="card install-card">
+      <div>
+        <div className="install-icon"><Smartphone size={20} /></div>
+        <h2>Добавить Gym Helper на экран</h2>
+        <p>Приложение будет открываться как отдельная иконка, а базовые файлы будут кэшироваться для более быстрого старта.</p>
+      </div>
+      {installPrompt ? (
+        <button type="button" className="primary-button" onClick={installApp}>Установить</button>
+      ) : (
+        <p className="hint tight">На iPhone: Safari → Поделиться → «На экран Домой». В Chrome/Android кнопка установки появится автоматически, когда браузер разрешит.</p>
+      )}
+    </div>
   );
 }
 
