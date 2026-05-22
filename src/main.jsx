@@ -699,6 +699,32 @@ function round(value, digits = 0) {
   return Math.round(numeric(value) * factor) / factor;
 }
 
+function csvCell(value) {
+  const text = value == null ? "" : String(value);
+  if (/[",\n;]/.test(text)) return `"${text.replaceAll('"', '""')}"`;
+  return text;
+}
+
+function toCsv(headers, rows) {
+  return [headers, ...rows].map((row) => row.map(csvCell).join(";")).join("\n");
+}
+
+function downloadTextFile(filename, content, mimeType = "text/plain;charset=utf-8") {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function fileDateStamp() {
+  return new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+}
+
 function createAppState({ entries, profile, weightLog, nutritionEntries, favoriteFoods, savedMenus, scannedFoods }) {
   return {
     version: APP_STATE_VERSION,
@@ -1148,8 +1174,12 @@ function App() {
       setAuthLoading(false);
     });
 
-    const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    const { data } = supabase.auth.onAuthStateChange((event, nextSession) => {
       setSession(nextSession);
+      if (event === "PASSWORD_RECOVERY") {
+        setAuthMode("newPassword");
+        setAuthMessage("Введи новый пароль для аккаунта Gym Helper.");
+      }
       setAuthLoading(false);
     });
 
@@ -1443,16 +1473,44 @@ function App() {
       setAuthMessage("Supabase не подключен: добавь VITE_SUPABASE_URL и VITE_SUPABASE_ANON_KEY.");
       return;
     }
+
     const email = authEmail.trim();
     const password = authPassword;
-    if (!email || password.length < 6) {
-      setAuthMessage("Введи email и пароль минимум 6 символов.");
-      return;
-    }
-
     setAuthLoading(true);
     setAuthMessage("");
+
     try {
+      if (authMode === "reset") {
+        if (!email) {
+          setAuthMessage("Введи email, на который зарегистрирован аккаунт.");
+          return;
+        }
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: window.location.origin,
+        });
+        if (error) throw error;
+        setAuthMessage("Отправили письмо для восстановления пароля. Проверь почту и папку Спам.");
+        return;
+      }
+
+      if (authMode === "newPassword") {
+        if (password.length < 6) {
+          setAuthMessage("Новый пароль должен быть минимум 6 символов.");
+          return;
+        }
+        const { error } = await supabase.auth.updateUser({ password });
+        if (error) throw error;
+        setAuthPassword("");
+        setAuthMode("signin");
+        setAuthMessage("Пароль обновлен. Можно продолжать пользоваться Gym Helper.");
+        return;
+      }
+
+      if (!email || password.length < 6) {
+        setAuthMessage("Введи email и пароль минимум 6 символов.");
+        return;
+      }
+
       const result = authMode === "signup"
         ? await supabase.auth.signUp({ email, password })
         : await supabase.auth.signInWithPassword({ email, password });
@@ -1460,7 +1518,7 @@ function App() {
       setAuthMessage(authMode === "signup" ? "Аккаунт создан. Проверь письмо от Gym Helper и подтверди email, если подтверждение включено в Supabase." : "Вход выполнен.");
       setAuthPassword("");
     } catch (error) {
-      setAuthMessage(error.message || "Не удалось выполнить вход.");
+      setAuthMessage(error.message || "Не удалось выполнить действие.");
     } finally {
       setAuthLoading(false);
     }
@@ -1498,6 +1556,80 @@ function App() {
     } finally {
       setAuthLoading(false);
     }
+  }
+
+  function exportBackupJson() {
+    const state = createAppState(appStateRef.current || {});
+    downloadTextFile(
+      `gym-helper-backup-${fileDateStamp()}.json`,
+      JSON.stringify(state, null, 2),
+      "application/json;charset=utf-8"
+    );
+  }
+
+  function exportWorkoutsCsv() {
+    const rows = entries
+      .slice()
+      .sort((a, b) => String(b.date).localeCompare(String(a.date)) || numeric(b.createdAt) - numeric(a.createdAt))
+      .map((entry) => {
+        const setRows = getStrengthSetRows(entry);
+        return [
+          entry.date || "",
+          formatShortDate(entry.date),
+          entry.type === "cardio" ? "Кардио" : "Силовая",
+          entry.name || "",
+          entry.type === "cardio" ? "" : formatStrengthSummary(entry),
+          entry.type === "cardio" ? numeric(entry.duration) : numeric(entry.sets),
+          entry.type === "cardio" ? numeric(entry.distance) : numeric(entry.reps),
+          entry.type === "cardio" ? "" : numeric(entry.weight),
+          entry.type === "cardio" ? numeric(entry.calories) : volume(entry),
+          setRows.length ? setRows.map((row, index) => `${index + 1}) ${row.reps}x${row.weight}`).join(" | ") : "",
+          entry.note || "",
+        ];
+      });
+    downloadTextFile(
+      `gym-helper-workouts-${fileDateStamp()}.csv`,
+      "\ufeff" + toCsv(["Дата ISO", "Дата", "Тип", "Упражнение", "Итог", "Подходы/мин", "Повторы/км", "Вес", "Объем/ккал", "Подходы подробно", "Заметка"], rows),
+      "text/csv;charset=utf-8"
+    );
+  }
+
+  function exportNutritionCsv() {
+    const rows = nutritionEntries
+      .slice()
+      .sort((a, b) => String(b.date).localeCompare(String(a.date)) || numeric(b.createdAt) - numeric(a.createdAt))
+      .map((item) => {
+        const meal = meals.find((mealItem) => mealItem.id === item.meal);
+        return [
+          item.date || "",
+          formatShortDate(item.date),
+          meal?.label || item.meal || "",
+          item.name || "",
+          numeric(item.grams),
+          numeric(item.total?.calories),
+          numeric(item.total?.protein),
+          numeric(item.total?.fat),
+          numeric(item.total?.carbs),
+          item.source || "",
+        ];
+      });
+    downloadTextFile(
+      `gym-helper-nutrition-${fileDateStamp()}.csv`,
+      "\ufeff" + toCsv(["Дата ISO", "Дата", "Прием пищи", "Продукт", "Граммы", "Ккал", "Белки", "Жиры", "Углеводы", "Источник"], rows),
+      "text/csv;charset=utf-8"
+    );
+  }
+
+  function exportWeightCsv() {
+    const rows = weightLog
+      .slice()
+      .sort((a, b) => String(b.date).localeCompare(String(a.date)))
+      .map((item) => [item.date || "", formatShortDate(item.date), item.weightKg || ""]);
+    downloadTextFile(
+      `gym-helper-weight-${fileDateStamp()}.csv`,
+      "\ufeff" + toCsv(["Дата ISO", "Дата", "Вес, кг"], rows),
+      "text/csv;charset=utf-8"
+    );
   }
 
   function updateProfile(field, value) {
@@ -2393,6 +2525,12 @@ function App() {
               addWeightRecord={addWeightRecord}
               weightLog={weightLog}
               deleteWeightRecord={deleteWeightRecord}
+              dataTools={{
+                exportBackupJson,
+                exportWorkoutsCsv,
+                exportNutritionCsv,
+                exportWeightCsv,
+              }}
               auth={{
                 enabled: Boolean(supabase),
                 session,
@@ -3043,6 +3181,26 @@ function AuthCard({ auth }) {
     );
   }
 
+  if (auth.authMode === "newPassword") {
+    return (
+      <form className="card auth-card stack small-gap" onSubmit={auth.handleAuthSubmit}>
+        <div className="section-head inline">
+          <div>
+            <h2>Новый пароль</h2>
+            <p>Задай новый пароль для аккаунта Gym Helper</p>
+          </div>
+          <UserRound className="muted-icon" />
+        </div>
+        <div className="field">
+          <label>Новый пароль</label>
+          <input type="password" value={auth.authPassword} onChange={(event) => auth.setAuthPassword(event.target.value)} placeholder="Минимум 6 символов" autoComplete="new-password" />
+        </div>
+        <button type="submit" className="primary-button" disabled={auth.authLoading}>{auth.authLoading ? "Сохраняю..." : "Сохранить новый пароль"}</button>
+        {auth.authMessage && <p className="hint">{auth.authMessage}</p>}
+      </form>
+    );
+  }
+
   if (auth.session?.user) {
     return (
       <div className="card auth-card stack small-gap">
@@ -3054,6 +3212,7 @@ function AuthCard({ auth }) {
           <span className={`sync-badge ${auth.cloudLoaded ? "ready" : "pending"}`}>{auth.cloudLoaded ? "sync" : "..."}</span>
         </div>
         <div className="cloud-status">{auth.cloudStatus}</div>
+        <p className="hint">При выходе данные на этом устройстве очищаются, а облачная копия аккаунта остается.</p>
         <div className="auth-action-row single">
           <button
             type="button"
@@ -3072,28 +3231,43 @@ function AuthCard({ auth }) {
     );
   }
 
+  const isReset = auth.authMode === "reset";
+
   return (
     <form className="card auth-card stack small-gap" onSubmit={auth.handleAuthSubmit}>
       <div className="section-head inline">
         <div>
-          <h2>Аккаунт и синхронизация</h2>
-          <p>Войди, чтобы данные были доступны с телефона и компьютера</p>
+          <h2>{isReset ? "Восстановление пароля" : "Аккаунт и синхронизация"}</h2>
+          <p>{isReset ? "Отправим письмо со ссылкой для смены пароля" : "Войди, чтобы данные были доступны с телефона и компьютера"}</p>
         </div>
         <UserRound className="muted-icon" />
       </div>
-      <div className="segmented">
-        <button type="button" className={auth.authMode === "signin" ? "active" : ""} onClick={() => auth.setAuthMode("signin")}>Вход</button>
-        <button type="button" className={auth.authMode === "signup" ? "active" : ""} onClick={() => auth.setAuthMode("signup")}>Регистрация</button>
-      </div>
+      {!isReset && (
+        <div className="segmented">
+          <button type="button" className={auth.authMode === "signin" ? "active" : ""} onClick={() => auth.setAuthMode("signin")}>Вход</button>
+          <button type="button" className={auth.authMode === "signup" ? "active" : ""} onClick={() => auth.setAuthMode("signup")}>Регистрация</button>
+        </div>
+      )}
       <div className="field">
         <label>Email</label>
         <input type="email" value={auth.authEmail} onChange={(event) => auth.setAuthEmail(event.target.value)} placeholder="you@example.com" autoComplete="email" />
       </div>
-      <div className="field">
-        <label>Пароль</label>
-        <input type="password" value={auth.authPassword} onChange={(event) => auth.setAuthPassword(event.target.value)} placeholder="Минимум 6 символов" autoComplete={auth.authMode === "signup" ? "new-password" : "current-password"} />
+      {!isReset && (
+        <div className="field">
+          <label>Пароль</label>
+          <input type="password" value={auth.authPassword} onChange={(event) => auth.setAuthPassword(event.target.value)} placeholder="Минимум 6 символов" autoComplete={auth.authMode === "signup" ? "new-password" : "current-password"} />
+        </div>
+      )}
+      <button type="submit" className="primary-button" disabled={auth.authLoading}>
+        {auth.authLoading ? "Подождите..." : isReset ? "Отправить письмо" : auth.authMode === "signup" ? "Создать аккаунт" : "Войти"}
+      </button>
+      <div className="auth-links-row">
+        {isReset ? (
+          <button type="button" className="tiny-link" onClick={() => auth.setAuthMode("signin")}>Вернуться ко входу</button>
+        ) : auth.authMode === "signin" ? (
+          <button type="button" className="tiny-link" onClick={() => auth.setAuthMode("reset")}>Забыли пароль?</button>
+        ) : null}
       </div>
-      <button type="submit" className="primary-button" disabled={auth.authLoading}>{auth.authLoading ? "Подождите..." : auth.authMode === "signup" ? "Создать аккаунт" : "Войти"}</button>
       {auth.authMessage && <p className="hint">{auth.authMessage}</p>}
       <p className="hint">После входа локальные данные объединяются с облаком и дальше сохраняются автоматически.</p>
     </form>
@@ -3111,7 +3285,7 @@ function ProfileMetric({ icon: Icon, label, value, detail }) {
   );
 }
 
-function ProfileScreen({ profile, saveProfile, nutritionPlan, bmi, trend, weightForm, setWeightForm, addWeightRecord, weightLog, deleteWeightRecord, auth }) {
+function ProfileScreen({ profile, saveProfile, nutritionPlan, bmi, trend, weightForm, setWeightForm, addWeightRecord, weightLog, deleteWeightRecord, auth, dataTools }) {
   const [editing, setEditing] = useState(false);
   const [draftProfile, setDraftProfile] = useState(profile);
 
@@ -3258,6 +3432,23 @@ function ProfileScreen({ profile, saveProfile, nutritionPlan, bmi, trend, weight
           <MacroChip label="Углеводы" value={nutritionPlan.carbs} unit="г" />
         </div>
         <p className="hint">Цели можно поменять вручную в режиме редактирования профиля. Это ориентир, не медицинское назначение: при заболеваниях, беременности, РПП или приеме препаратов питание лучше согласовывать со специалистом.</p>
+      </div>
+
+      <div className="card stack account-tools-card">
+        <div className="section-head">
+          <div>
+            <h2>Данные и экспорт</h2>
+            <p>Скачай резервную копию или CSV-таблицы для Excel/Google Sheets</p>
+          </div>
+          <Save className="muted-icon" />
+        </div>
+        <div className="data-actions-grid">
+          <button type="button" className="secondary-button" onClick={dataTools?.exportBackupJson}><Save size={17} /> Резервная копия JSON</button>
+          <button type="button" className="secondary-button" onClick={dataTools?.exportWorkoutsCsv}><ClipboardList size={17} /> Тренировки CSV</button>
+          <button type="button" className="secondary-button" onClick={dataTools?.exportNutritionCsv}><Utensils size={17} /> Питание CSV</button>
+          <button type="button" className="secondary-button" onClick={dataTools?.exportWeightCsv}><Weight size={17} /> Вес CSV</button>
+        </div>
+        <p className="hint">JSON подходит для резервной копии всех данных. CSV удобнее для анализа таблицами. Экспорт не удаляет данные из облака.</p>
       </div>
 
       <div className="card stack">

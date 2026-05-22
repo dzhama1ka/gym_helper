@@ -2354,3 +2354,31 @@ button:disabled {
     gap: 6px;
   }
 }
+
+.auth-links-row {
+  display: flex;
+  justify-content: center;
+  min-height: 24px;
+}
+
+.account-tools-card .section-head {
+  align-items: flex-start;
+}
+
+.data-actions-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.data-actions-grid .secondary-button {
+  min-height: 46px;
+  justify-content: center;
+  text-align: center;
+}
+
+@media (max-width: 520px) {
+  .data-actions-grid {
+    grid-template-columns: 1fr;
+  }
+}
