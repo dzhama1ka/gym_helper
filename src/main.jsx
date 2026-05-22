@@ -3583,6 +3583,59 @@ function AuthCard({ auth }) {
   );
 }
 
+
+function buildWeightInsights(data = [], targetWeight = "", range = "90") {
+  const allPoints = [...data]
+    .filter((item) => numeric(item.weightKg) > 0 && item.date)
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  if (!allPoints.length) {
+    return {
+      points: [],
+      allPoints: [],
+      current: 0,
+      start: 0,
+      delta: 0,
+      days: 0,
+      average7: 0,
+      toGoal: 0,
+      rangeLabel: "—",
+    };
+  }
+
+  const lastDate = new Date(allPoints[allPoints.length - 1].date + "T12:00:00");
+  const rangeDays = range === "all" ? null : Number(range);
+  const firstAllowed = rangeDays
+    ? new Date(lastDate.getTime() - rangeDays * 24 * 60 * 60 * 1000)
+    : null;
+  const points = firstAllowed
+    ? allPoints.filter((item) => new Date(item.date + "T12:00:00") >= firstAllowed)
+    : allPoints;
+  const visiblePoints = points.length ? points : allPoints.slice(-1);
+  const first = visiblePoints[0];
+  const last = visiblePoints[visiblePoints.length - 1];
+  const firstTime = new Date(first.date + "T12:00:00").getTime();
+  const lastTime = new Date(last.date + "T12:00:00").getTime();
+  const days = Math.max(1, Math.round((lastTime - firstTime) / (24 * 60 * 60 * 1000)));
+  const recent = allPoints.slice(-7);
+  const average7 = recent.reduce((sum, item) => sum + numeric(item.weightKg), 0) / Math.max(1, recent.length);
+  const current = numeric(last.weightKg);
+  const target = numeric(targetWeight);
+  const label = range === "30" ? "30 дней" : range === "90" ? "90 дней" : "всё время";
+
+  return {
+    points: visiblePoints,
+    allPoints,
+    current,
+    start: numeric(first.weightKg),
+    delta: current - numeric(first.weightKg),
+    days,
+    average7,
+    toGoal: target ? target - current : 0,
+    rangeLabel: label,
+  };
+}
+
 function ProfileMetric({ icon: Icon, label, value, detail }) {
   return (
     <div className="profile-metric">
@@ -3597,6 +3650,7 @@ function ProfileMetric({ icon: Icon, label, value, detail }) {
 function ProfileScreen({ profile, saveProfile, nutritionPlan, bmi, trend, weightForm, setWeightForm, addWeightRecord, weightLog, deleteWeightRecord, auth, dataTools }) {
   const [editing, setEditing] = useState(false);
   const [draftProfile, setDraftProfile] = useState(profile);
+  const [weightRange, setWeightRange] = useState("90");
 
   useEffect(() => {
     if (!editing) setDraftProfile(profile);
@@ -3626,6 +3680,10 @@ function ProfileScreen({ profile, saveProfile, nutritionPlan, bmi, trend, weight
   const goalDelta = targetWeight && currentWeight ? round(targetWeight - currentWeight, 1) : 0;
   const goalLabel = goalDelta === 0 ? "поддержание" : `${goalDelta > 0 ? "+" : ""}${goalDelta} кг до цели`;
   const sexLabel = profile.sex === "male" ? "мужской" : profile.sex === "female" ? "женский" : "пол не указан";
+  const weightInsights = useMemo(
+    () => buildWeightInsights(weightLog, profile.targetWeightKg, weightRange),
+    [weightLog, profile.targetWeightKg, weightRange]
+  );
 
   return (
     <section className="screen stack">
@@ -3764,7 +3822,7 @@ function ProfileScreen({ profile, saveProfile, nutritionPlan, bmi, trend, weight
         <div className="section-head">
           <div>
             <h2>График веса</h2>
-            <p>Смотри тренд, а не случайные колебания воды</p>
+            <p>Числовые даты, периоды и сглаженный тренд</p>
           </div>
           <LineChart className="muted-icon" />
         </div>
@@ -3776,7 +3834,21 @@ function ProfileScreen({ profile, saveProfile, nutritionPlan, bmi, trend, weight
           <NumberField label="Вес, кг" value={weightForm.weightKg} onChange={(value) => setWeightForm((current) => ({ ...current, weightKg: value }))} placeholder={profile.weightKg} />
           <button className="mini-primary" type="submit"><Plus size={18} /></button>
         </form>
-        <WeightChart data={weightLog} targetWeight={profile.targetWeightKg} />
+
+        <div className="range-switch" role="group" aria-label="Период графика веса">
+          <button type="button" className={weightRange === "30" ? "active" : ""} onClick={() => setWeightRange("30")}>30д</button>
+          <button type="button" className={weightRange === "90" ? "active" : ""} onClick={() => setWeightRange("90")}>90д</button>
+          <button type="button" className={weightRange === "all" ? "active" : ""} onClick={() => setWeightRange("all")}>Всё</button>
+        </div>
+
+        <div className="weight-insight-grid">
+          <div className="weight-insight-card"><span>Сейчас</span><strong>{weightInsights.current ? round(weightInsights.current, 1) : "—"} кг</strong></div>
+          <div className="weight-insight-card"><span>{weightInsights.rangeLabel}</span><strong>{weightInsights.delta > 0 ? "+" : ""}{round(weightInsights.delta, 1)} кг</strong></div>
+          <div className="weight-insight-card"><span>Среднее 7 замеров</span><strong>{weightInsights.average7 ? round(weightInsights.average7, 1) : "—"} кг</strong></div>
+          <div className="weight-insight-card"><span>До цели</span><strong>{weightInsights.toGoal ? `${weightInsights.toGoal > 0 ? "+" : ""}${round(weightInsights.toGoal, 1)} кг` : "—"}</strong></div>
+        </div>
+
+        <WeightChart data={weightInsights.points} targetWeight={profile.targetWeightKg} />
         {trend ? (
           <div className="trend-box">
             <p><strong>{trend.delta > 0 ? "+" : ""}{round(trend.delta, 1)} кг</strong> за {trend.days} дн.</p>
@@ -3787,7 +3859,7 @@ function ProfileScreen({ profile, saveProfile, nutritionPlan, bmi, trend, weight
         ) : <p className="hint">Добавь минимум две записи веса в разные даты, чтобы увидеть темп изменения.</p>}
         <div className="weight-list">
           {weightLog.slice(0, 8).map((item) => (
-            <div key={item.id} className="mini-row">
+            <div key={item.id} className="mini-row weight-record-row">
               <span>{formatShortDate(item.date)}</span>
               <strong>{item.weightKg} кг</strong>
               <button type="button" onClick={() => deleteWeightRecord(item.id)}><Trash2 size={15} /></button>
@@ -4046,43 +4118,75 @@ function ProgressBar({ value, max }) {
 }
 
 function WeightChart({ data, targetWeight }) {
-  const points = [...data].filter((item) => numeric(item.weightKg) > 0).sort((a, b) => a.date.localeCompare(b.date));
+  const points = [...data].filter((item) => numeric(item.weightKg) > 0 && item.date).sort((a, b) => a.date.localeCompare(b.date));
   if (points.length < 2) return <div className="chart-empty">Недостаточно данных для графика</div>;
 
-  const width = 390;
-  const height = 210;
-  const pad = { top: 30, right: 74, bottom: 48, left: 58 };
+  const width = 430;
+  const height = 250;
+  const pad = { top: 34, right: 70, bottom: 62, left: 64 };
   const values = points.map((item) => numeric(item.weightKg));
   const target = numeric(targetWeight);
-  const min = Math.min(...values, target || Infinity) - 1;
-  const max = Math.max(...values, target || -Infinity) + 1;
+  const min = Math.min(...values, target || Infinity) - 0.8;
+  const max = Math.max(...values, target || -Infinity) + 0.8;
   const firstDate = new Date(points[0].date + "T12:00:00").getTime();
   const lastDate = new Date(points[points.length - 1].date + "T12:00:00").getTime();
   const span = Math.max(1, lastDate - firstDate);
   const plotWidth = width - pad.left - pad.right;
   const plotHeight = height - pad.top - pad.bottom;
-  const coords = points.map((item) => {
-    const x = pad.left + ((new Date(item.date + "T12:00:00").getTime() - firstDate) / span) * plotWidth;
-    const y = pad.top + (1 - ((numeric(item.weightKg) - min) / (max - min))) * plotHeight;
-    return { x, y, ...item };
-  });
+
+  function xFor(dateString) {
+    return pad.left + ((new Date(dateString + "T12:00:00").getTime() - firstDate) / span) * plotWidth;
+  }
+
+  function yFor(value) {
+    return pad.top + (1 - ((numeric(value) - min) / Math.max(0.1, max - min))) * plotHeight;
+  }
+
+  const coords = points.map((item) => ({ x: xFor(item.date), y: yFor(item.weightKg), ...item }));
   const path = coords.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`).join(" ");
-  const targetY = target ? pad.top + (1 - ((target - min) / (max - min))) * plotHeight : null;
+  const averagePoints = points.map((item, index) => {
+    const currentTime = new Date(item.date + "T12:00:00").getTime();
+    const weekAgo = currentTime - 6 * 24 * 60 * 60 * 1000;
+    const windowItems = points.slice(0, index + 1).filter((candidate) => {
+      const candidateTime = new Date(candidate.date + "T12:00:00").getTime();
+      return candidateTime >= weekAgo && candidateTime <= currentTime;
+    });
+    const average = windowItems.reduce((sum, candidate) => sum + numeric(candidate.weightKg), 0) / Math.max(1, windowItems.length);
+    return { x: xFor(item.date), y: yFor(average), date: item.date, value: average };
+  });
+  const averagePath = averagePoints.length > 1
+    ? averagePoints.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`).join(" ")
+    : "";
+  const targetY = target ? yFor(target) : null;
   const firstLabel = formatShortDate(points[0].date);
   const lastLabel = formatShortDate(points[points.length - 1].date);
+  const latest = coords[coords.length - 1];
+  const mid = round((min + max) / 2, 1);
+  const gridY = [max, mid, min].map((value) => ({ value, y: yFor(value) }));
 
   return (
     <svg className="weight-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="График изменения веса">
+      {gridY.map((line) => (
+        <g key={line.value}>
+          <line x1={pad.left} y1={line.y} x2={width - pad.right} y2={line.y} className="chart-grid-line" />
+          <text x={pad.left - 12} y={line.y + 4} textAnchor="end" className="chart-label">{round(line.value, 1)}</text>
+        </g>
+      ))}
       <line x1={pad.left} y1={height - pad.bottom} x2={width - pad.right} y2={height - pad.bottom} className="axis" />
       <line x1={pad.left} y1={pad.top} x2={pad.left} y2={height - pad.bottom} className="axis" />
       {targetY && <line x1={pad.left} y1={targetY} x2={width - pad.right} y2={targetY} className="target-line" />}
+      {averagePath && <path d={averagePath} className="weight-average-path" />}
       <path d={path} className="weight-path" />
       {coords.map((point) => <circle key={point.id || point.date} cx={point.x} cy={point.y} r="4" className="weight-point" />)}
-      <text x={pad.left - 10} y={pad.top + 4} textAnchor="end" className="chart-label">{round(max, 1)} кг</text>
-      <text x={pad.left - 10} y={height - pad.bottom + 4} textAnchor="end" className="chart-label">{round(min, 1)} кг</text>
-      <text x={pad.left} y={height - 15} textAnchor="start" className="chart-date-label">{firstLabel}</text>
-      <text x={width - pad.right} y={height - 15} textAnchor="middle" className="chart-date-label">{lastLabel}</text>
-      {targetY && <text x={width - 10} y={Math.max(14, targetY - 7)} textAnchor="end" className="target-label">цель {target} кг</text>}
+      <text x={pad.left} y={height - 24} textAnchor="start" className="chart-date-label">{firstLabel}</text>
+      <text x={width - pad.right} y={height - 24} textAnchor="end" className="chart-date-label">{lastLabel}</text>
+      <text x={pad.left} y={height - 8} textAnchor="start" className="chart-legend-label">линия — вес · пунктир — среднее</text>
+      {targetY && <text x={width - 10} y={Math.max(16, targetY - 8)} textAnchor="end" className="target-label">цель {target} кг</text>}
+      {latest && (
+        <text x={Math.min(width - pad.right - 4, latest.x + 10)} y={Math.max(18, latest.y - 9)} className="chart-value-pill">
+          {round(latest.weightKg, 1)} кг
+        </text>
+      )}
     </svg>
   );
 }

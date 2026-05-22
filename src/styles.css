@@ -2545,3 +2545,87 @@ button:disabled {
   color: #67e8f9;
   background: rgba(103, 232, 249, 0.12);
 }
+
+/* v21: improved weight analytics */
+.range-switch {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  padding: 5px;
+  border-radius: 18px;
+  background: rgba(15, 23, 42, 0.72);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+}
+.range-switch button {
+  min-height: 38px;
+  border: 0;
+  border-radius: 14px;
+  background: transparent;
+  color: #94a3b8;
+  font-weight: 900;
+}
+.range-switch button.active {
+  background: rgba(103, 232, 249, 0.16);
+  color: #e0faff;
+  box-shadow: inset 0 0 0 1px rgba(103, 232, 249, 0.22);
+}
+.weight-insight-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+.weight-insight-card {
+  min-width: 0;
+  border-radius: 18px;
+  padding: 12px;
+  background: rgba(15, 23, 42, 0.72);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+}
+.weight-insight-card span {
+  display: block;
+  color: #94a3b8;
+  font-size: 11px;
+  line-height: 1.25;
+  font-weight: 800;
+}
+.weight-insight-card strong {
+  display: block;
+  margin-top: 6px;
+  color: #f8fafc;
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+.chart-grid-line {
+  stroke: rgba(148, 163, 184, 0.16);
+  stroke-width: 1;
+}
+.weight-average-path {
+  fill: none;
+  stroke: rgba(251, 191, 36, 0.85);
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 6 6;
+}
+.chart-legend-label {
+  fill: #64748b;
+  font-size: 9px;
+  font-weight: 800;
+}
+.chart-value-pill {
+  fill: #e0faff;
+  font-size: 10px;
+  font-weight: 900;
+}
+.weight-record-row {
+  grid-template-columns: minmax(84px, 1fr) minmax(76px, auto) 36px;
+}
+.weight-record-row span,
+.weight-record-row strong {
+  white-space: nowrap;
+}
+@media (max-width: 520px) {
+  .weight-insight-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
