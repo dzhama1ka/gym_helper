@@ -53,8 +53,33 @@ const SCANNED_FOODS_KEY = "mobile-workout-tracker-scanned-foods-v1";
 const LAST_AUTH_USER_KEY = "mobile-workout-tracker-last-auth-user-v1";
 const CLOUD_TABLE = "app_state";
 const APP_STATE_VERSION = 11;
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "";
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
+function normalizeSupabaseUrl(value) {
+  const raw = String(value || "").trim().replace(/^['"]|['"]$/g, "");
+  if (!raw) return "";
+  try {
+    const url = new URL(raw);
+    url.pathname = url.pathname.replace(/\/(rest|auth|storage|functions)\/v1\/?$/i, "").replace(/\/$/, "");
+    url.search = "";
+    url.hash = "";
+    return url.toString().replace(/\/$/, "");
+  } catch {
+    return raw.replace(/\/(rest|auth|storage|functions)\/v1\/?$/i, "").replace(/\/$/, "");
+  }
+}
+
+function isFetchNetworkError(error) {
+  return error?.name === "TypeError" && /failed to fetch|load failed|network/i.test(String(error?.message || ""));
+}
+
+function formatCloudError(error, action = "синхронизации") {
+  if (isFetchNetworkError(error)) {
+    return `Ошибка ${action}: не удалось подключиться к Supabase. Проверь интернет, VPN/AdBlock, что VITE_SUPABASE_URL указан как https://xxxxx.supabase.co, и сделай Redeploy.`;
+  }
+  return `Ошибка ${action}: ${error?.message || "неизвестная ошибка"}`;
+}
+
+const SUPABASE_URL = normalizeSupabaseUrl(import.meta.env.VITE_SUPABASE_URL || "");
+const SUPABASE_ANON_KEY = String(import.meta.env.VITE_SUPABASE_ANON_KEY || "").trim().replace(/^['"]|['"]$/g, "");
 const supabase = SUPABASE_URL && SUPABASE_ANON_KEY ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
 const exerciseLibrary = [
@@ -1176,6 +1201,7 @@ function App() {
   const [installPrompt, setInstallPrompt] = useState(null);
   const [isStandalone, setIsStandalone] = useState(false);
   const [hydrated, setHydrated] = useState(false);
+  const [syncRetryTick, setSyncRetryTick] = useState(0);
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   const scanFrameRef = useRef(null);
@@ -1338,14 +1364,14 @@ function App() {
       } catch (error) {
         if (!cancelled) {
           setCloudLoaded(false);
-          setCloudStatus(`Ошибка синхронизации: ${error.message}`);
+          setCloudStatus(formatCloudError(error, "синхронизации"));
         }
       }
     }
 
     loadCloudState();
     return () => { cancelled = true; };
-  }, [session?.user?.id, hydrated]);
+  }, [session?.user?.id, hydrated, syncRetryTick]);
 
   useEffect(() => {
     if (!supabase || !session?.user?.id || !cloudLoaded || skipCloudSaveRef.current) return undefined;
@@ -1357,7 +1383,7 @@ function App() {
         if (savedRow?.updated_at) lastCloudUpdatedAtRef.current = savedRow.updated_at;
         setCloudStatus("Сохранено в облаке");
       } catch (error) {
-        setCloudStatus(`Ошибка сохранения: ${error.message}`);
+        setCloudStatus(formatCloudError(error, "сохранения"));
       }
     }, 900);
 
@@ -1424,6 +1450,7 @@ function App() {
         remoteApplyTimerRef.current = window.setTimeout(() => { skipCloudSaveRef.current = false; }, 700);
       } catch (error) {
         console.warn("Не удалось обновить данные при возврате", error);
+        if (isFetchNetworkError(error)) setCloudStatus(formatCloudError(error, "обновления"));
       }
     };
 
@@ -1651,6 +1678,12 @@ function App() {
     ].forEach((key) => localStorage.removeItem(key));
     hasLocalDataRef.current = false;
     applyAppState(createAppState({}));
+  }
+
+  function retryCloudSync() {
+    if (!session?.user?.id) return;
+    setCloudStatus("Повторяю синхронизацию...");
+    setSyncRetryTick((value) => value + 1);
   }
 
   async function handleSignOut() {
@@ -2770,6 +2803,7 @@ function App() {
                 cloudLoaded,
                 handleAuthSubmit,
                 handleSignOut,
+                retryCloudSync,
               }}
             />
           )}
@@ -3521,6 +3555,11 @@ function AuthCard({ auth }) {
           <span className={`sync-badge ${auth.cloudLoaded ? "ready" : "pending"}`}>{auth.cloudLoaded ? "sync" : "..."}</span>
         </div>
         <div className="cloud-status">{auth.cloudStatus}</div>
+        {String(auth.cloudStatus || "").toLowerCase().includes("ошибка") && (
+          <button type="button" className="secondary-button" onClick={auth.retryCloudSync} disabled={auth.authLoading}>
+            Повторить синхронизацию
+          </button>
+        )}
         <p className="hint">При выходе данные на этом устройстве очищаются, а облачная копия аккаунта остается.</p>
         <div className="auth-action-row single">
           <button
