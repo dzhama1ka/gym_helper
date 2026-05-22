@@ -20,6 +20,7 @@ import {
   LineChart,
   ListPlus,
   Pause,
+  Pencil,
   Play,
   Plus,
   RotateCcw,
@@ -1156,6 +1157,8 @@ function App() {
   const [selectedDate, setSelectedDate] = useState(todayISO());
   const [workoutForm, setWorkoutForm] = useState(emptyWorkoutForm());
   const [foodForm, setFoodForm] = useState(emptyFoodForm());
+  const [editingWorkoutId, setEditingWorkoutId] = useState("");
+  const [editingNutritionId, setEditingNutritionId] = useState("");
   const [query, setQuery] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [weightForm, setWeightForm] = useState({ date: todayISO(), weightKg: "" });
@@ -1829,6 +1832,45 @@ function App() {
     }
   }
 
+  function startEditWorkoutEntry(entry) {
+    if (!entry) return;
+    setSelectedDate(entry.date || selectedDate);
+    setEditingWorkoutId(entry.id);
+    setTab("training");
+    if (entry.type === "cardio") {
+      setWorkoutForm({
+        ...emptyWorkoutForm(),
+        type: "cardio",
+        name: entry.name || "",
+        duration: String(entry.duration || ""),
+        intensityId: entry.intensityId || "",
+        distance: entry.distance === undefined || entry.distance === "" ? "" : String(entry.distance),
+        calories: entry.calories === undefined || entry.calories === "" ? "" : String(entry.calories),
+        note: entry.note || "",
+      });
+    } else {
+      const rows = getStrengthSetRows(entry);
+      setWorkoutForm({
+        ...emptyWorkoutForm(),
+        type: "strength",
+        name: entry.name || "",
+        sets: String(entry.sets || rows.length || 3),
+        reps: entry.reps === "" || entry.reps === undefined ? "" : String(entry.reps),
+        weight: entry.weight === "" || entry.weight === undefined ? "" : String(entry.weight),
+        setMode: rows.length ? "detailed" : "summary",
+        setRows: rows.length ? rows.map((row, index) => ({ id: uid(), order: index + 1, reps: String(row.reps || ""), weight: row.weight === "" || row.weight === undefined ? "" : String(row.weight) })) : [],
+        note: entry.note || "",
+      });
+    }
+    setShowSuggestions(false);
+  }
+
+  function cancelWorkoutEdit() {
+    setEditingWorkoutId("");
+    setWorkoutForm(emptyWorkoutForm());
+    setShowSuggestions(false);
+  }
+
   function selectWorkoutType(type) {
     setWorkoutForm((current) => ({ ...emptyWorkoutForm(), type, name: type === "cardio" ? "Беговая дорожка" : current.name }));
     setShowSuggestions(false);
@@ -1890,77 +1932,91 @@ function App() {
     setTab("training");
   }
 
-  function addWorkoutEntry(event) {
-    event.preventDefault();
+  function buildWorkoutEntryFromForm(existingEntry = null) {
     const name = workoutForm.name.trim();
-    if (!name) return;
+    if (!name) return null;
 
     if (workoutForm.type === "cardio") {
       const profileForEntry = getCardioProfile(name) || activeCardioProfile;
       const intensity = getIntensity(profileForEntry, workoutForm.intensityId);
       const minutes = numeric(workoutForm.duration);
       const calories = numeric(workoutForm.calories) || calculateExerciseCalories({ met: intensity?.met, weightKg: profile.weightKg, minutes });
-      if (minutes <= 0) return;
+      if (minutes <= 0) return null;
 
-      setEntries((current) => [
-        {
-          id: uid(),
-          date: selectedDate,
-          type: "cardio",
-          name: resolveCardioName(name) || name,
-          duration: minutes,
-          intensityId: intensity?.id || "",
-          intensityLabel: intensity?.label || "",
-          met: intensity?.met || 0,
-          distance: numeric(workoutForm.distance),
-          calories,
-          note: workoutForm.note.trim(),
-          createdAt: Date.now(),
-        },
-        ...current,
-      ]);
-    } else {
-      let strengthEntry;
-      if (workoutForm.setMode === "detailed") {
-        const rows = normalizeWorkoutSetRows(workoutForm.setRows);
-        if (!rows.length) return;
-        const sameReps = rows.every((row) => row.reps === rows[0].reps);
-        const sameWeight = rows.every((row) => numeric(row.weight) === numeric(rows[0].weight));
-        strengthEntry = {
-          id: uid(),
-          date: selectedDate,
-          type: "strength",
-          name,
-          sets: rows.length,
-          reps: sameReps ? rows[0].reps : "",
-          weight: sameWeight ? rows[0].weight : "",
-          setRows: rows,
-          note: workoutForm.note.trim(),
-          createdAt: Date.now(),
-        };
-      } else {
-        const sets = numeric(workoutForm.sets);
-        const reps = numeric(workoutForm.reps);
-        if (sets <= 0 || reps <= 0) return;
-        const weight = workoutForm.weight === "" ? "" : numeric(workoutForm.weight);
-        strengthEntry = {
-          id: uid(),
-          date: selectedDate,
-          type: "strength",
-          name,
-          sets,
-          reps,
-          weight,
-          setRows: makeDefaultSetRows(sets, reps, weight).map((row) => ({ ...row, reps: numeric(row.reps), weight: row.weight === "" ? "" : numeric(row.weight) })),
-          note: workoutForm.note.trim(),
-          createdAt: Date.now(),
-        };
-      }
-
-      setEntries((current) => [strengthEntry, ...current]);
+      return {
+        ...(existingEntry || {}),
+        id: existingEntry?.id || uid(),
+        date: selectedDate,
+        type: "cardio",
+        name: resolveCardioName(name) || name,
+        duration: minutes,
+        intensityId: intensity?.id || "",
+        intensityLabel: intensity?.label || "",
+        met: intensity?.met || 0,
+        distance: numeric(workoutForm.distance),
+        calories,
+        note: workoutForm.note.trim(),
+        createdAt: existingEntry?.createdAt || Date.now(),
+        updatedAt: Date.now(),
+      };
     }
 
-    setWorkoutForm({ ...emptyWorkoutForm(), type: workoutForm.type, name });
+    if (workoutForm.setMode === "detailed") {
+      const rows = normalizeWorkoutSetRows(workoutForm.setRows);
+      if (!rows.length) return null;
+      const sameReps = rows.every((row) => row.reps === rows[0].reps);
+      const sameWeight = rows.every((row) => numeric(row.weight) === numeric(rows[0].weight));
+      return {
+        ...(existingEntry || {}),
+        id: existingEntry?.id || uid(),
+        date: selectedDate,
+        type: "strength",
+        name,
+        sets: rows.length,
+        reps: sameReps ? rows[0].reps : "",
+        weight: sameWeight ? rows[0].weight : "",
+        setRows: rows,
+        note: workoutForm.note.trim(),
+        createdAt: existingEntry?.createdAt || Date.now(),
+        updatedAt: Date.now(),
+      };
+    }
+
+    const sets = numeric(workoutForm.sets);
+    const reps = numeric(workoutForm.reps);
+    if (sets <= 0 || reps <= 0) return null;
+    const weight = workoutForm.weight === "" ? "" : numeric(workoutForm.weight);
+    return {
+      ...(existingEntry || {}),
+      id: existingEntry?.id || uid(),
+      date: selectedDate,
+      type: "strength",
+      name,
+      sets,
+      reps,
+      weight,
+      setRows: makeDefaultSetRows(sets, reps, weight).map((row) => ({ ...row, reps: numeric(row.reps), weight: row.weight === "" ? "" : numeric(row.weight) })),
+      note: workoutForm.note.trim(),
+      createdAt: existingEntry?.createdAt || Date.now(),
+      updatedAt: Date.now(),
+    };
+  }
+
+  function addWorkoutEntry(event) {
+    event.preventDefault();
+    const existingEntry = editingWorkoutId ? entries.find((entry) => entry.id === editingWorkoutId) : null;
+    const workoutEntry = buildWorkoutEntryFromForm(existingEntry);
+    if (!workoutEntry) return;
+
+    setEntries((current) => {
+      if (editingWorkoutId) {
+        return current.map((entry) => entry.id === editingWorkoutId ? workoutEntry : entry);
+      }
+      return [workoutEntry, ...current];
+    });
+
+    setEditingWorkoutId("");
+    setWorkoutForm({ ...emptyWorkoutForm(), type: workoutForm.type, name: workoutEntry.name });
     setShowSuggestions(false);
   }
 
@@ -2140,28 +2196,61 @@ function App() {
     if (!food.name || grams <= 0) return;
 
     const total = calculateFoodAmount(food, grams);
-    if (foodForm.name.trim()) {
+    if (foodForm.name.trim() && !editingNutritionId) {
       saveFoodToGeneralList(food, grams, { source: "manual" });
     }
-    setNutritionEntries((current) => [
-      {
-        id: uid(),
-        date: selectedDate,
-        meal: foodForm.meal,
-        name: food.name,
-        grams,
-        per100: { calories: numeric(food.calories), protein: numeric(food.protein), fat: numeric(food.fat), carbs: numeric(food.carbs) },
-        total,
-        createdAt: Date.now(),
-      },
-      ...current,
-    ]);
+
+    const existingEntry = editingNutritionId ? nutritionEntries.find((item) => item.id === editingNutritionId) : null;
+    const nextEntry = {
+      ...(existingEntry || {}),
+      id: existingEntry?.id || uid(),
+      date: selectedDate,
+      meal: foodForm.meal,
+      name: food.name,
+      grams,
+      per100: { calories: numeric(food.calories), protein: numeric(food.protein), fat: numeric(food.fat), carbs: numeric(food.carbs) },
+      total,
+      createdAt: existingEntry?.createdAt || Date.now(),
+      updatedAt: Date.now(),
+    };
+
+    setNutritionEntries((current) => {
+      if (editingNutritionId) {
+        return current.map((item) => item.id === editingNutritionId ? nextEntry : item);
+      }
+      return [nextEntry, ...current];
+    });
+    setEditingNutritionId("");
     setFoodForm(emptyFoodForm());
-    setScanner((current) => current.product?.name ? { ...current, product: null, message: `Добавлено: ${food.name}` } : current);
+    setScanner((current) => current.product?.name ? { ...current, product: null, message: `${editingNutritionId ? "Обновлено" : "Добавлено"}: ${food.name}` } : current);
   }
 
   function deleteNutritionEntry(id) {
     setNutritionEntries((current) => current.filter((item) => item.id !== id));
+    if (editingNutritionId === id) cancelNutritionEdit();
+  }
+
+  function startEditNutritionEntry(item) {
+    if (!item) return;
+    setSelectedDate(item.date || selectedDate);
+    setEditingNutritionId(item.id);
+    setTab("nutrition");
+    setFoodForm({
+      ...emptyFoodForm(),
+      meal: item.meal || "breakfast",
+      name: item.name || "",
+      foodId: "",
+      grams: item.grams === undefined || item.grams === "" ? "100" : String(item.grams),
+      calories: String(item.per100?.calories ?? ""),
+      protein: String(item.per100?.protein ?? ""),
+      fat: String(item.per100?.fat ?? ""),
+      carbs: String(item.per100?.carbs ?? ""),
+    });
+  }
+
+  function cancelNutritionEdit() {
+    setEditingNutritionId("");
+    setFoodForm(emptyFoodForm());
   }
 
   function addSampleMenu() {
@@ -2459,19 +2548,26 @@ function App() {
                 </div>
               </details>
 
-              <details className="card stack template-details">
+              <details className="card stack template-details" open={editingWorkoutId ? true : undefined}>
                 <summary>
                   <span>
-                    <strong>Добавить упражнение</strong>
+                    <strong>{editingWorkoutId ? "Редактировать упражнение" : "Добавить упражнение"}</strong>
                     <small>Силовые и кардио сохраняются в одном дневнике</small>
                   </span>
                   <Dumbbell className="muted-icon" />
                 </summary>
                 <form onSubmit={addWorkoutEntry} className="stack collapsible-form">
                   <div className="form-topline">
-                    <span className="hint">Выбери тип упражнения и заполни параметры.</span>
-                    <button type="button" className="tiny-link" onClick={() => setWorkoutForm(emptyWorkoutForm())}>Очистить</button>
+                    <span className="hint">{editingWorkoutId ? "Измени поля и сохрани запись." : "Выбери тип упражнения и заполни параметры."}</span>
+                    <button type="button" className="tiny-link" onClick={editingWorkoutId ? cancelWorkoutEdit : () => setWorkoutForm(emptyWorkoutForm())}>{editingWorkoutId ? "Отмена" : "Очистить"}</button>
                   </div>
+
+                  {editingWorkoutId && (
+                    <div className="edit-mode-banner">
+                      <Pencil size={17} />
+                      <span>Режим редактирования: после сохранения старая запись будет обновлена.</span>
+                    </div>
+                  )}
 
                   <div className="segmented">
                     <button type="button" className={workoutForm.type === "strength" ? "active" : ""} onClick={() => selectWorkoutType("strength")}>Силовое</button>
@@ -2589,11 +2685,11 @@ function App() {
                     <textarea value={workoutForm.note} onChange={(event) => setWorkoutField("note", event.target.value)} placeholder="Например: увеличить вес на следующей тренировке" rows={3} />
                   </div>
 
-                  <button className="primary-button" type="submit"><Plus size={19} /> Добавить</button>
+                  <button className="primary-button" type="submit">{editingWorkoutId ? <Save size={19} /> : <Plus size={19} />} {editingWorkoutId ? "Сохранить изменения" : "Добавить"}</button>
                 </form>
               </details>
 
-              <WorkoutList selectedDate={selectedDate} dateEntries={dateEntries} deleteWorkoutEntry={deleteWorkoutEntry} startRestTimer={startRestTimer} openExerciseInfo={setExerciseInfoName} />
+              <WorkoutList selectedDate={selectedDate} dateEntries={dateEntries} deleteWorkoutEntry={deleteWorkoutEntry} editWorkoutEntry={startEditWorkoutEntry} startRestTimer={startRestTimer} openExerciseInfo={setExerciseInfoName} />
             </section>
           )}
 
@@ -2618,6 +2714,8 @@ function App() {
               isSavedUserFood={isSavedUserFood}
               foodPreview={foodPreview}
               addNutritionEntry={addNutritionEntry}
+              editingNutritionId={editingNutritionId}
+              cancelNutritionEdit={cancelNutritionEdit}
               saveCurrentFoodAsFavorite={saveCurrentFoodAsFavorite}
               saveCurrentFoodToGeneralList={saveCurrentFoodToGeneralList}
               scanner={scanner}
@@ -2633,6 +2731,7 @@ function App() {
               applySavedMenu={applySavedMenu}
               deleteSavedMenu={deleteSavedMenu}
               deleteNutritionEntry={deleteNutritionEntry}
+              editNutritionEntry={startEditNutritionEntry}
             />
           )}
 
@@ -2871,7 +2970,7 @@ function RestTimerCard({ restTimer, setRestTimer, startRestTimer, pauseRestTimer
   );
 }
 
-function WorkoutList({ selectedDate, dateEntries, deleteWorkoutEntry, startRestTimer, openExerciseInfo }) {
+function WorkoutList({ selectedDate, dateEntries, deleteWorkoutEntry, editWorkoutEntry, startRestTimer, openExerciseInfo }) {
   return (
     <section className="stack">
       <div className="section-head inline">
@@ -2882,7 +2981,7 @@ function WorkoutList({ selectedDate, dateEntries, deleteWorkoutEntry, startRestT
         <EmptyState text="За этот день пока нет упражнений." />
       ) : (
         <div className="stack small-gap">
-          {dateEntries.map((entry) => <ExerciseCard key={entry.id} entry={entry} onDelete={() => deleteWorkoutEntry(entry.id)} onRest={() => startRestTimer(90)} onInfo={openExerciseInfo} />)}
+          {dateEntries.map((entry) => <ExerciseCard key={entry.id} entry={entry} onDelete={() => deleteWorkoutEntry(entry.id)} onEdit={() => editWorkoutEntry(entry)} onRest={() => startRestTimer(90)} onInfo={openExerciseInfo} />)}
         </div>
       )}
     </section>
@@ -2908,6 +3007,8 @@ function NutritionScreen({
   isSavedUserFood,
   foodPreview,
   addNutritionEntry,
+  editingNutritionId,
+  cancelNutritionEdit,
   saveCurrentFoodAsFavorite,
   saveCurrentFoodToGeneralList,
   scanner,
@@ -2923,6 +3024,7 @@ function NutritionScreen({
   applySavedMenu,
   deleteSavedMenu,
   deleteNutritionEntry,
+  editNutritionEntry,
 }) {
   const [manualBarcode, setManualBarcode] = useState("");
   const [quickMenuTitle, setQuickMenuTitle] = useState("");
@@ -3105,12 +3207,19 @@ function NutritionScreen({
       <details className="card stack template-details" open>
         <summary>
           <span>
-            <strong>Добавить продукт</strong>
+            <strong>{editingNutritionId ? "Редактировать продукт в дневнике" : "Добавить продукт"}</strong>
             <small>Поиск, свои продукты, сканер и данные с этикетки</small>
           </span>
           <Apple className="muted-icon" />
         </summary>
         <form onSubmit={addNutritionEntry} className="stack collapsible-form">
+          {editingNutritionId && (
+            <div className="edit-mode-banner">
+              <Pencil size={17} />
+              <span>Редактируешь запись питания. Дата, прием пищи и граммы будут обновлены после сохранения.</span>
+              <button type="button" className="tiny-link" onClick={cancelNutritionEdit}>Отмена</button>
+            </div>
+          )}
           {favoriteFoods.length > 0 && (
             <div className="favorite-foods">
               {favoriteFoods.map((food) => (
@@ -3225,7 +3334,7 @@ function NutritionScreen({
           </div>
 
           <div className="grid-2">
-            <button className="primary-button" type="submit"><Plus size={19} /> Добавить</button>
+            <button className="primary-button" type="submit">{editingNutritionId ? <Save size={19} /> : <Plus size={19} />} {editingNutritionId ? "Сохранить" : "Добавить"}</button>
             <button className="secondary-button" type="button" onClick={saveCurrentFoodAsFavorite}><Star size={18} /> В избранное</button>
           </div>
         </form>
@@ -3303,7 +3412,7 @@ function NutritionScreen({
                 <h2>{meal.label}</h2>
                 <span className="pill">{items.reduce((sum, item) => sum + item.total.calories, 0)} ккал</span>
               </div>
-              {items.length === 0 ? <p className="hint">Пока пусто.</p> : items.map((item) => <FoodCard key={item.id} item={item} onDelete={() => deleteNutritionEntry(item.id)} />)}
+              {items.length === 0 ? <p className="hint">Пока пусто.</p> : items.map((item) => <FoodCard key={item.id} item={item} onEdit={() => editNutritionEntry(item)} onDelete={() => deleteNutritionEntry(item.id)} />)}
             </div>
           );
         })}
@@ -3821,7 +3930,7 @@ function ReadOnlyMetric({ label, value }) {
   );
 }
 
-function ExerciseCard({ entry, onDelete, onRest, onInfo, compact = false }) {
+function ExerciseCard({ entry, onDelete, onEdit, onRest, onInfo, compact = false }) {
   const isCardio = entry.type === "cardio";
   const currentVolume = volume(entry);
   const exerciseInfo = !isCardio ? getExerciseInfo(entry.name) : null;
@@ -3834,7 +3943,10 @@ function ExerciseCard({ entry, onDelete, onRest, onInfo, compact = false }) {
           <h3>{entry.name}</h3>
           {!compact && entry.note && <p className="entry-note">{entry.note}</p>}
         </div>
-        <button onClick={onDelete} className="delete-button" aria-label="Удалить"><Trash2 size={17} /></button>
+        <div className="card-action-row">
+          {onEdit && <button onClick={onEdit} className="edit-button" aria-label="Редактировать"><Pencil size={16} /></button>}
+          <button onClick={onDelete} className="delete-button" aria-label="Удалить"><Trash2 size={17} /></button>
+        </div>
       </div>
 
       {isCardio ? (
@@ -4008,7 +4120,7 @@ function ExerciseProgressChart({ entries }) {
   );
 }
 
-function FoodCard({ item, onDelete }) {
+function FoodCard({ item, onEdit, onDelete }) {
   const mealLabel = meals.find((meal) => meal.id === item.meal)?.label || "Еда";
   return (
     <article className="food-card">
@@ -4020,6 +4132,7 @@ function FoodCard({ item, onDelete }) {
       <div className="food-side">
         <strong>{item.total.calories}</strong>
         <small>ккал</small>
+        {onEdit && <button onClick={onEdit} aria-label="Редактировать"><Pencil size={15} /></button>}
         <button onClick={onDelete} aria-label="Удалить"><Trash2 size={15} /></button>
       </div>
     </article>

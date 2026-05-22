@@ -2505,3 +2505,43 @@ button:disabled {
     min-width: 150px;
   }
 }
+
+.card-action-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.edit-button {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  color: #67e8f9;
+  background: rgba(103, 232, 249, 0.12);
+  flex-shrink: 0;
+}
+
+.edit-mode-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid rgba(103, 232, 249, 0.22);
+  background: rgba(103, 232, 249, 0.1);
+  color: #cffafe;
+  border-radius: 18px;
+  padding: 10px 12px;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.edit-mode-banner span {
+  flex: 1;
+}
+
+.food-side button[aria-label="Редактировать"] {
+  color: #67e8f9;
+  background: rgba(103, 232, 249, 0.12);
+}
